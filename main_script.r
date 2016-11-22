@@ -41,7 +41,7 @@
   #set up values that are constant between runs
   runvec <- c(
     NID = 24,
-    NSIM = 80,
+    NSIM = 20,
     LIMITLO = 0.8,
     LIMITHI = 1.25,
     NCORE.M1 = 5,
@@ -61,7 +61,8 @@
     CL.BOV = 0.045,
     V2.BOV = 0.045,
     V3.BOV = 0.045,
-    Q.BOV = 0.045)
+    Q.BOV = 0.045,
+    ALT.BOV = 0.0001)
 
   #set up time vector for simulation
   timevec <- c(
@@ -87,7 +88,7 @@
   # 5. Non-Linear Mixed Effects
   # 6. Create .r script for loading
 
-  ddply(rundf[1,], .(RUN, SCEN), function(df, vec, time, cor, rtemplate) {
+  ddply(rundf, .(RUN, SCEN), function(df, vec, time, cor, rtemplate) {
 ### 1. Simulation of data
   #Set working directory
     SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
@@ -150,10 +151,20 @@
     }else{
       ETA6 <- rnorm(nsub,mean=0,sd=sqrt(df$F1.BSV))  # F1 (bsv)
     }
-    ETA7 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["CL.BOV"]))  # CLbov
-    ETA8 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["V2.BOV"]))  # V2bov
-    ETA9 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["Q.BOV"]))   # Qbov
-    ETA10 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["V3.BOV"]))  # V3bov
+    if(df$BOV.TYPE != 2) {
+      ETA7 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["CL.BOV"]))  # CLbov
+    }else{
+      ETA7 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["ALT.BOV"]))  # CLbov
+    }
+    if(df$BOV.TYPE == 1) {
+      ETA8 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["V2.BOV"]))  # V2bov
+      ETA9 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["Q.BOV"]))   # Qbov
+      ETA10 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["V3.BOV"]))  # V3bov
+    }else{
+      ETA8 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["ALT.BOV"]))  # V2bov
+      ETA9 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["ALT.BOV"]))   # Qbov
+      ETA10 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["ALT.BOV"]))  # V3bov
+    }
     if(vec["KA.BSV"]==0){
       ETA11 <- rep(0, times=nsub)  # KA (no bsv)
     }else{
@@ -293,7 +304,7 @@
   	  if(i!=ncore.m3) {
         system(cmd, input=nmbat2, invisible=F, show.output.on.console=F, wait=F)
       }else{
-        Sys.sleep(60)
+        Sys.sleep(300)
         system(cmd, input=nmbat2, invisible=F, show.output.on.console=F, wait=F)
         wait.file <- paste0(SIM.name.out,"3_model",nsim)
         start.time <- Sys.time()
@@ -327,7 +338,7 @@
 
 ### SECOND HALF ----------------------------------------------------------------
 
-  ddply(rundf[1,], .(RUN, SCEN), function(df, vec) {
+  bioqtable <- ddply(rundf, .(RUN, SCEN), function(df, vec) {
   #Set working directory
     SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
     SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
@@ -341,9 +352,11 @@
     nsim <- vec["NSIM"]
     nsub <- nid*nsim
     nobs <- length(time)
-    sstime <- ifelse(df$SS.TYPE == 1,
-      c(0,0.25,0.5,1,2,4,6,8,12,16,24,36,48,72,96),
-      c(0,0.25,0.5,1,2,4,8,16,36,96))
+    if(df$SS.TYPE == 1) {
+      sstime <- c(0,0.25,0.5,1,2,4,6,8,12,16,24,36,48,72,96)
+    }else{
+      sstime <- c(0,0.25,0.5,1,2,4,8,16,36,96)
+    }
 
   # Define random unexplained variability (SIGMA) values
     ruv.prop <- df$RUV.PROP
@@ -365,13 +378,13 @@
   # Load data files for processing
     #simdata <- read.csv(paste(SIM.file,"_RAW.csv", sep="")) #Only do this if you need it for troubleshooting, RAW.csv can be 500MB+
 
-    ipredresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_IPREDresult.csv",sep=""))
-    ipredfresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_IPREDFresult.csv",sep=""))
-    ipredcresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_IPREDCresult.csv",sep=""))
+    ipredresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_IPREDresult.csv"))
+    ipredfresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_IPREDFresult.csv"))
+    ipredcresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_IPREDCresult.csv"))
 
-    ncaresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_NCAresult.csv",sep=""))
-    ncafresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_NCAFresult.csv",sep=""))
-    ncacresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_NCACresult.csv",sep=""))
+    ncaresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_NCAresult.csv"))
+    ncafresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_NCAFresult.csv"))
+    ncacresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_NCACresult.csv"))
 
     trunc.file <- paste(SIM.name.out,"TRUNCATED.csv",sep="_")
     limdata <- read.csv(paste(SIM.dir,trunc.file,sep="/"))
@@ -380,93 +393,60 @@
 
   # Setup mbt .bat file (is run manually)
     setwd(EST.dir)
-    cd.EST.dir <- paste("cd",EST.dir,sep=" ")
-    mbtcall <- c(paste("call ",wfn.dir,sep=""),"E:",cd.EST.dir,"call nmmbt")
+    cd.EST.dir <- paste("cd",EST.dir)
+    mbtcall <- c(paste("call",wfn.dir),"E:",cd.EST.dir,"call nmmbt")
     mbtbat <- "nmmbtrun.bat"
     mbtbat.dir <- paste(EST.dir,mbtbat,sep="/")
     writeLines(mbtcall,mbtbat.dir)
-    system(mbtbat,invisible=FALSE)
+    system(mbtbat)
     setwd(master.dir)
 
    # Process fit files into results table (see functions utility)
-    m1.nlme.fit.out <- nlme.fit(SIM.name.out,FIT.dir,EST.dir,"M1",nsim,nid,limobs)
-    m1.nsim <- m1.nlme.fit.out[1]
-    m1.fitfail <- m1.nlme.fit.out[-1]
+    m1nlme.fitout <- nlme.fit(SIM.name.out,FIT.dir,EST.dir,"M1",nsim,nid,limobs)
+    m1.nsim <- m1nlme.fitout[1]
+    m1.nsub <- m1.nsim*nid
+    m1.fitfail <- m1nlme.fitout[-1]
     m1sim.in <- read.csv(paste(SIM.file,"M1_NMTHETAS.csv", sep="_"))
     m1sim.time <- nlme.simtime(m1sim.in)
     m1sim.out <- nlme.sim(m1sim.in,m1sim.time,nid,m1.nsim)
     data.process(m1sim.out,m1sim.time,nid,m1.nsim,SIM.file,trunc.blq,mode=3)
-    m1result <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_M1result.csv",sep=""))
-    m1fresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_M1Fresult.csv",sep=""))
-    m1cresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_M1Cresult.csv",sep=""))
-    m1phfresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_M1PHFresult.csv",sep=""))
+    m1result <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M1result.csv"))
+    m1fresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M1Fresult.csv"))
+    m1cresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M1Cresult.csv"))
+    m1phfresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M1PHFresult.csv"))
 
-    m3.nlme.fit.out <- nlme.fit(SIM.name.out,FIT.dir,EST.dir,"M3",nsim,nid,limobs)
-    m3.nsim <- m3.nlme.fit.out[1]
-    m3.fitfail <- m3.nlme.fit.out[-1]
+    m3nlme.fitout <- nlme.fit(SIM.name.out,FIT.dir,EST.dir,"M3",nsim,nid,limobs)
+    m3.nsim <- m3nlme.fitout[1]
+    m3.nsub <- m3.nsim*nid
+    m3.fitfail <- m3nlme.fitout[-1]
     m3sim.in <- read.csv(paste(SIM.file,"M3_NMTHETAS.csv", sep="_"))
     m3sim.time <- nlme.simtime(m3sim.in)
     m3sim.out <- nlme.sim(m3sim.in,m3sim.time,nid,m3.nsim)
     data.process(m3sim.out,m3sim.time,nid,m3.nsim,SIM.file,trunc.blq,mode=4)
-    m3result <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_M3result.csv",sep=""))
-    m3fresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_M3Fresult.csv",sep=""))
-    m3cresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_M3Cresult.csv",sep=""))
-    m3phfresult <- read.csv(paste(SIM.dir,"/",SIM.name.out,"_M3PHFresult.csv",sep=""))
+    m3result <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M3result.csv"))
+    m3fresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M3Fresult.csv"))
+    m3cresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M3Cresult.csv"))
+    m3phfresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M3PHFresult.csv"))
 
-  ### Determine for bioequvalence
-  # FREL
-    ipredftable <- glohipercent.func(ipredfresult,"Simulation", "FREL")
-    ncaftable <- glohipercent.func(ncafresult,"Non-Compartmental Analysis", "FREL")
-    m1ftable <- glohipercent.func(m1fresult,"Non-Linear Mixed Effects M1 Frel", "FREL")
-    m1phfresult.in <- m1phfresult
-    colnames(m1phfresult.in) <- c("SIM_ID", "FREL_GMEAN", "FREL_GLO95", "FREL_GHI95")
-    m1phftable <- glohipercent.func(m1phfresult.in,"Non-Linear Mixed Effects M1 Post-Hoc", "FREL")
-    m3ftable <- glohipercent.func(m3fresult,"Non-Linear Mixed Effects M3 Frel", "FREL")
-    m3phfresult.in <- m3phfresult
-    colnames(m3phfresult.in) <- c("SIM_ID", "FREL_GMEAN", "FREL_GLO95", "FREL_GHI95")
-    m3phftable <- glohipercent.func(m3phfresult.in,"Non-Linear Mixed Effects M3 Post-Hoc", "FREL")
-    allftable <- rbind(ipredftable,ncaftable,m1ftable,m1phftable,m3ftable,m3phftable)
-
-  # CMAX
-    ipredctable <- glohipercent.func(ipredcresult,"Simulation", "CMAX")
-    ncactable <- glohipercent.func(ncacresult,"Non-Compartmental Analysis", "CMAX")
-    m1ctable <- glohipercent.func(m1cresult,"Non-Linear Mixed Effects M1", "CMAX")
-    m3ctable <- glohipercent.func(m3cresult,"Non-Linear Mixed Effects M3", "CMAX")
-    allctable <- rbind(ipredctable,ncactable,m1ctable,m3ctable)
-
-  ### Confidence Intervals of Means and Confidence Intervals (ConfidenceInterval-ception)
-  # FREL
-    ipredfci <- confint.func(ipredfresult,"IPRED", "FREL")
-    ncafci   <- confint.func(ncafresult,"NCA", "FREL")
-    m1fci  <- confint.func(m1fresult,"M1 F1", "FREL")
-    m1phfci <- confint.func(m1phfresult,"M1 PH", "FREL")
-    m3fci  <- confint.func(m3fresult,"M3 F1", "FREL")
-    m3phfci <- confint.func(m3phfresult,"M3 PH", "FREL")
-  # CMAX
-    ipredcci <- confint.func(ipredcresult,"IPRED", "CMAX")
-    ncacci   <- confint.func(ncacresult,"NCA", "CMAX")
-    m1cci  <- confint.func(m1cresult,"M1", "CMAX")
-    m3cci  <- confint.func(m3cresult,"M3", "CMAX")
-  # And combine
-    confint.table <- as.data.frame(rbind(ipredfci,ncafci,m1fci,m1phfci,m3fci,m3phfci,ipredcci,ncacci,m1cci,m3cci))
-    confint.table <- orderBy(~VARIABLE+ANALYSIS ,confint.table)
-    write.csv(confint.table, file=paste(SIM.file,"CONF_INTtable.csv",sep="_"),row.names=FALSE)
-    confint.table2 <- confint.table
-    confint.table2$VARIABLE <- c(rep((1:3),each=6),rep((4:6),each=4))
-    confint.table2$ORDER <- confint.table$CIHI95-confint.table$CILO95
-
-  # Find percentage of
+  # Find percentage of successful runs
     mbt <- read.table(file=paste(EST.dir,"nmmbt.nm7.txt",sep="/"),header=TRUE)
     mbt <- orderBy(~Run,mbt)
-    mbt$Run <- rep(1:2,each=nsim)
-    m1mbt <- subset(mbt[c(1,5,6)],Run==1) #m1
+    mbt$Method <- rep(1:2,each=nsim)
+    mbt$ModelNum <- rep(order(as.character(1:nsim)), times = 2)
+    mbt$Success <- gsub("SUCCESSFUL",1,mbt$Min)
+    mbt$Success <- gsub("TERMINATED",0,mbt$Min)
+    mbt <- orderBy(~Method+ModelNum,mbt)
+    m1.term <- which(mbt$Success == 0 & mbt$Method == 1)
+    m3.term <- which(mbt$Success == 0 & mbt$Method == 2) - 20
+
+    m1mbt <- mbt[mbt$Method == 1, c(1,5,6)] #m1
     m1mbt$Min <- gsub("SUCCESSFUL",1,m1mbt$Min)
     m1mbt$Min <- gsub("TERMINATED",0,m1mbt$Min)
     m1mbt$Cov <- gsub("NONE",0,m1mbt$Cov)
     m1mbt$Cov <- gsub("OK",1,m1mbt$Cov)
     m1mbt$Cov <- gsub("ABORTED",0,m1mbt$Cov)
     m1mbt$Cov <- gsub("UNOBTAINABLE",0,m1mbt$Cov)
-    m3mbt <- subset(mbt[c(1,5,6)],Run==2) #m3
+    m3mbt <- mbt[mbt$Method == 2, c(1,5,6)] #m3
     m3mbt$Min <- gsub("SUCCESSFUL",1,m3mbt$Min)
     m3mbt$Min <- gsub("TERMINATED",0,m3mbt$Min)
     m3mbt$Cov <- gsub("NONE",0,m3mbt$Cov)
@@ -478,64 +458,142 @@
     m3min <- mean(as.numeric(m3mbt$Min))*100
     m3cov <- mean(as.numeric(m3mbt$Cov))*100
 
-  # Write to tables
-    ipredbioq <- bioq.func(ipredftable, limitlo, limithi, "IPRED")
-    ncabioq <- bioq.func(ncaftable, limitlo, limithi, "NCA")
-    m1f1bioq <- bioq.func(m1ftable, limitlo, limithi, "M1F1")
-    m1phbioq <- bioq.func(m1phftable, limitlo, limithi, "M1PH")
-    m3f1bioq <- bioq.func(m3ftable, limitlo, limithi, "M3F1")
-    m3phbioq <- bioq.func(m3phftable, limitlo, limithi, "M3PH")
-    bioqtable <- rbind(ipredbioq, ncabioq, m1f1bioq, m1phbioq, m3f1bioq, m3phbioq)
-    write.csv(bioqtable, file = paste(SIM.file, "BIOQtable.csv", sep = "_"), row.names = F)
+  ### Determine for bioequvalence
+  # FREL
+    #should do all this in ddply, doing the same things for each dataset
+    aovprep <- data.frame(matrix(NA, nrow=nsub*4+m1.nsub*4+m3.nsub*4, ncol=8))
+    colnames(aovprep) <- c("METH","ID","SIM","FORM","AUC","CMAX","IDf","FORMf")
+    aovprep$METH <- as.factor(c(
+      rep("IPRED", nsub*2),  #IPRED
+      rep("NCA", nsub*2),  #NCA
+      rep("M1PH", m1.nsub*2),  #M1PH
+      rep("M1F1", m1.nsub*2),  #M1F1
+      rep("M3PH", m3.nsub*2),  #M3PH
+      rep("M3F1", m3.nsub*2)))  #M3F1
+    aovprep$ID <- c(
+      limdata[limdata$TIME == 0, 2],  #IPRED
+      rep(ncaresult$STUD_ID, each = 2),  #NCA
+      m1sim.in$STUD_ID,  #M1PH
+      m1sim.in$STUD_ID,  #M1F1
+      m3sim.in$STUD_ID,  #M3PH
+      m3sim.in$STUD_ID)  #M3F1
+    aovprep$SIM <- c(
+      limdata[limdata$TIME == 0, 3],  #IPRED
+      rep(ncaresult$SIM_ID, each = 2),  #NCA
+      m1sim.in$SIM_ID,  #M1PH
+      m1sim.in$SIM_ID,  #M1F1
+      m3sim.in$SIM_ID,  #M3PH
+      m3sim.in$SIM_ID)  #M3F1
+    aovprep$FORM <- c(
+      limdata[limdata$TIME == 0, 6],  #IPRED
+      rep(1:2, times = nsub),  #NCA
+      rep(1:2, times = m1.nsub), #M1PH
+      rep(1:2, times = m1.nsub), #M1F1
+      rep(1:2, times = m3.nsub), #M3PH
+      rep(1:2, times = m3.nsub)) #M3F1
+    aovprep$AUC <- c(
+      limdata[limdata$TIME == 0, 12],  #IPRED
+      as.vector(rbind(ncaresult$INN_AUC, ncaresult$GEN_AUC)),  #NCA
+      as.vector(rbind(m1result$INN_AUC, m1result$GEN_AUC)),  #M1PH
+      m1sim.in$F1,  #M1F1
+      as.vector(rbind(m3result$INN_AUC, m3result$GEN_AUC)),  #M3PH
+      m3sim.in$F1)  #M3F1
+    aovprep$CMAX <- c(
+      as.vector(rbind(ipredresult$INN_CMAX,ipredresult$GEN_CMAX)),  #IPRED
+      as.vector(rbind(ncaresult$INN_CMAX, ncaresult$GEN_CMAX)),  #NCA
+      rep(as.vector(rbind(m1result$INN_CMAX, m1result$GEN_CMAX)),2),  #M1
+      rep(as.vector(rbind(m3result$INN_CMAX, m3result$GEN_CMAX)),2))  #M3
+    aovprep$IDf <- as.factor(aovprep$ID)
+    aovprep$FORMf <- as.factor(aovprep$FORM)
 
-    ipredcrat <- crat.func(ipredctable, limitlo, limithi, "IPRED")
-    ncacrat <- crat.func(ncactable, limitlo, limithi, "NCA")
-    m1crat <- crat.func(m1ctable, limitlo, limithi, "M1")
-    m3crat <- crat.func(m3ctable, limitlo, limithi, "M3")
-    crattable <- rbind(ipredcrat, ncacrat, m1crat, m3crat)
-    write.csv(crattable, file=paste(SIM.file, "CRATtable.csv", sep = "_"), row.names = F)
+    faov <- ddply(aovprep, .(METH, SIM), function(df) runaov2(df, USE = "AUC"))
+    caov <- ddply(aovprep, .(METH, SIM), function(df) runaov2(df, USE = "CMAX"))
+    ipred.faov <- faov[faov$METH == "IPRED", ]
+    ipred.caov <- caov[caov$METH == "IPRED", ]
+    meth.faov <- faov[faov$METH != "IPRED", ]
+    meth.caov <- caov[caov$METH != "IPRED", ]
 
-    ncatbioq <- errortype.process(ncabioq, ipredbioq, 0, nsim, "NCA")
-    m1f1tbioq <- errortype.process(m1f1bioq, ipredbioq, m1.fitfail, nsim, "M1F1")
-    m3f1tbioq <- errortype.process(m3f1bioq, ipredbioq, m3.fitfail, nsim, "M3F1")
-    m1phtbioq <- errortype.process(m1phbioq, ipredbioq, m1.fitfail, nsim, "M1PH")
-    m3phtbioq <- errortype.process(m3phbioq, ipredbioq, m3.fitfail, nsim, "M3PH")
-    write.csv(ncatbioq, file = paste(SIM.file, "NCA_BIOQtable.csv", sep = "_"), row.names = F)
-    write.csv(m1f1tbioq, file = paste(SIM.file, "M1F1_BIOQtable.csv", sep = "_"), row.names = F)
-    write.csv(m3f1tbioq, file = paste(SIM.file, "M3F1_BIOQtable.csv", sep = "_"), row.names = F)
-    write.csv(m1phtbioq, file = paste(SIM.file, "M1PH_BIOQtable.csv", sep = "_"), row.names = F)
-    write.csv(m3phtbioq, file = paste(SIM.file, "M3PH_BIOQtable.csv", sep = "_"), row.names = F)
+    fbioq <- ddply(faov, .(METH), function(df) mean(df$BE))
+    cbioq <- ddply(caov, .(METH), function(df) mean(df$BE))
+    ferror <- ddply(meth.faov, .(METH), function(df) errortype.func2(ipred.faov$BE, df$BE))
+    ferror.t1 <- ddply(ferror, .(METH), function(df) mean(as.numeric(as.vector(df$pT1))))
+    ferror.t2 <- ddply(ferror, .(METH), function(df) mean(as.numeric(as.vector(df$pT2))))
+    cerror <- ddply(meth.caov, .(METH), function(df) errortype.func2(ipred.caov$BE, df$BE))
+    cerror.t1 <- ddply(cerror, .(METH), function(df) mean(as.numeric(as.vector(df$pT1))))
+    cerror.t2 <- ddply(cerror, .(METH), function(df) mean(as.numeric(as.vector(df$pT2))))
 
-    ncatcrat <- errortype.process(ncacrat, ipredcrat, 0, nsim, "NCA")
-    m1tcrat <- errortype.process(m1crat, ipredcrat, m1.fitfail, nsim, "M1")
-    m3tcrat <- errortype.process(m3crat, ipredcrat, m3.fitfail, nsim, "M3")
-    write.csv(ncatcrat, file=paste(SIM.file, "NCA_CRATtable.csv" ,sep="_"), row.names = F)
-    write.csv(m1tcrat, file=paste(SIM.file, "M1_CRATtable.csv" ,sep="_"), row.names = F)
-    write.csv(m3tcrat, file=paste(SIM.file, "M3_CRATtable.csv" ,sep="_"), row.names = F)
+    faov.termstat <- faov[!(
+      faov$METH == "M1F1" & faov$SIM %in% m1.term |
+      faov$METH == "M1PH" & faov$SIM %in% m1.term |
+      faov$METH == "M3F1" & faov$SIM %in% m3.term |
+      faov$METH == "M3PH" & faov$SIM %in% m3.term), ]
+    caov.termstat <- caov[!(
+      caov$METH == "M1F1" & caov$SIM %in% m1.term |
+      caov$METH == "M3F1" & caov$SIM %in% m3.term |
+      caov$METH == "M1PH" | caov$METH == "M3PH"), ]
+    ipred.faov.termstat <- faov.termstat[faov.termstat$METH == "IPRED", ]
+    ipred.caov.termstat <- caov.termstat[caov.termstat$METH == "IPRED", ]
 
-    finaltable <- data.frame(
-      mean(ipredbioq$p), mean(ncabioq$p), mean(m1f1bioq$p), mean(m1phbioq$p), mean(m3f1bioq$p),
-      mean(m3phbioq$p), mean(ipredcrat$p), mean(ncacrat$p), mean(m1crat$p), mean(m3crat$p),
-      mean(as.numeric(ncatbioq$pT1)-1), mean(as.numeric(ncatbioq$pT2)-1),
-      mean(as.numeric(m1f1tbioq$pT1)-1), mean(as.numeric(m1f1tbioq$pT2)-1),
-      mean(as.numeric(m3f1tbioq$pT1)-1), mean(as.numeric(m3f1tbioq$pT2)-1),
-      mean(as.numeric(m1phtbioq$pT1)-1), mean(as.numeric(m1phtbioq$pT2)-1),
-      mean(as.numeric(m3phtbioq$pT1)-1), mean(as.numeric(m3phtbioq$pT2)-1),
-      mean(as.numeric(ncatcrat$pT1)-1), mean(as.numeric(ncatcrat$pT2)-1),
-      mean(as.numeric(m1tcrat$pT1)-1), mean(as.numeric(m1tcrat$pT2)-1),
-      mean(as.numeric(m3tcrat$pT1)-1), mean(as.numeric(m3tcrat$pT2)-1),
-      per.bloq, trunc.blq, ruv.prop, ruv.add,
-      m1min, m3min, m1cov, m3cov, m1.nsim, m3.nsim)
-    colnames(finaltable) <- c(
-      "IPRED_PBIOQ", "NCA_PBIOQ", "M1F1_PBIOQ", "M1PH_PBIOQ", "M3F1_PBIOQ",
-      "M3PH_PBIOQ", "IPRED_PCRAT", "NCA_PCRAT", "M1_PCRAT", "M3_PCRAT",
-      "NCA_FT1", "NCA_FT2", "M1F1_FT1", "M1F1_FT2",
-      "M3F1_FT1", "M3F1_FT2", "M1PH_FT1", "M1PH_FT2",
-      "M3PH_FT1", "M3PH_FT2", "NCA_CT1", "NCA_CT2",
-      "M1_CT1", "M1_CT2", "M3_CT1", "M3_CT2",
-      "%BLOQ", "LLOQ", "RUVprop", "RUVadd",
-      "%M1msuc", "%M3msuc", "%M1csuc", "%M3csuc", "m1nsim", "m3nsim")
-    rownames(finaltable) <- SIM.name.out
-    write.csv(finaltable, file=paste(SIM.file,"FINALtable.csv",sep="_"),row.names=FALSE)
+    meth.faov.termstat <- faov.termstat[faov.termstat$METH != "IPRED", ]
+    meth.faov.termstat$IPRED.BE <- c(
+      rep(faov.termstat$BE[faov.termstat$METH == "IPRED" & !faov.termstat$SIM %in% m1.term], 2),
+      rep(faov.termstat$BE[faov.termstat$METH == "IPRED" & !faov.termstat$SIM %in% m3.term], 2),
+      faov.termstat$BE[faov.termstat$METH == "IPRED"])
 
+    meth.caov.termstat <- caov.termstat[caov.termstat$METH != "IPRED", ]
+    meth.caov.termstat$IPRED.BE <- c(
+      caov.termstat$BE[caov.termstat$METH == "IPRED" & !caov.termstat$SIM %in% m1.term],
+      caov.termstat$BE[caov.termstat$METH == "IPRED" & !caov.termstat$SIM %in% m3.term],
+      caov.termstat$BE[caov.termstat$METH == "IPRED"])
+
+    fbioq.termstat <- ddply(faov.termstat, .(METH), function(df) mean(df$BE))
+    cbioq.termstat <- ddply(caov.termstat, .(METH), function(df) mean(df$BE))
+    ferror.termstat <- ddply(meth.faov.termstat, .(METH), function(df) errortype.func2(df$IPRED.BE, df$BE))
+    ferror.termstat.t1 <- ddply(ferror.termstat, .(METH), function(df) mean(as.numeric(as.vector(df$pT1))))
+    ferror.termstat.t2 <- ddply(ferror.termstat, .(METH), function(df) mean(as.numeric(as.vector(df$pT2))))
+    cerror.termstat <- ddply(meth.caov.termstat, .(METH), function(df) errortype.func2(df$IPRED.BE, df$BE))
+    cerror.termstat.t1 <- ddply(cerror.termstat, .(METH), function(df) mean(as.numeric(as.vector(df$pT1))))
+    cerror.termstat.t2 <- ddply(cerror.termstat, .(METH), function(df) mean(as.numeric(as.vector(df$pT2))))
+
+    print(paste(SIM.name.out,"processed"))
+
+    aovbioqtable <- data.frame(
+      TERMSTAT = c("All","Only Success"),
+      IPREDBE = c(fbioq$V1[1]*100,fbioq.termstat$V1[1]*100),
+      NCABE = c(fbioq$V1[6]*100,fbioq.termstat$V1[6]*100),
+      M1F1BE = c(fbioq$V1[2]*100,fbioq.termstat$V1[2]*100),
+      M1PHBE = c(fbioq$V1[3]*100,fbioq.termstat$V1[3]*100),
+      M3F1BE = c(fbioq$V1[4]*100,fbioq.termstat$V1[4]*100),
+      M3PHBE = c(fbioq$V1[5]*100,fbioq.termstat$V1[5]*100),
+      IPREDCM = c(cbioq$V1[1]*100,cbioq.termstat$V1[1]*100),
+      NCACM = c(cbioq$V1[6]*100,cbioq.termstat$V1[4]*100),
+      M1CM = c(cbioq$V1[2]*100,cbioq.termstat$V1[2]*100),
+      M3CM = c(cbioq$V1[4]*100,cbioq.termstat$V1[3]*100),
+      NCAFT1 = c(ferror.t1$V1[5]*100,ferror.termstat.t1$V1[5]*100),
+      M1F1FT1 = c(ferror.t1$V1[1]*100,ferror.termstat.t1$V1[1]*100),
+      M1PHFT1 = c(ferror.t1$V1[2]*100,ferror.termstat.t1$V1[2]*100),
+      M3F1FT1 = c(ferror.t1$V1[3]*100,ferror.termstat.t1$V1[3]*100),
+      M3PHFT1 = c(ferror.t1$V1[4]*100,ferror.termstat.t1$V1[4]*100),
+      NCAFT2 = c(ferror.t2$V1[5]*100,ferror.termstat.t2$V1[5]*100),
+      M1F1FT2 = c(ferror.t2$V1[1]*100,ferror.termstat.t2$V1[1]*100),
+      M1PHFT2 = c(ferror.t2$V1[2]*100,ferror.termstat.t2$V1[2]*100),
+      M3F1FT2 = c(ferror.t2$V1[3]*100,ferror.termstat.t2$V1[3]*100),
+      M3PHFT2 = c(ferror.t2$V1[4]*100,ferror.termstat.t2$V1[4]*100),
+      NCACT1 = c(cerror.t1$V1[5]*100,cerror.termstat.t1$V1[3]*100),
+      M1CT1 = c(cerror.t1$V1[1]*100,cerror.termstat.t1$V1[1]*100),
+      M3CT1 = c(cerror.t1$V1[3]*100,cerror.termstat.t1$V1[2]*100),
+      NCACT2 = c(cerror.t2$V1[5]*100,cerror.termstat.t2$V1[3]*100),
+      M1CT2 = c(cerror.t2$V1[1]*100,cerror.termstat.t2$V1[1]*100),
+      M3CT2 = c(cerror.t2$V1[3]*100,cerror.termstat.t2$V1[2]*100),
+      PERBLOQ = per.bloq,
+      TRUNCBLQ = trunc.blq,
+      RUVPROP = ruv.prop,
+      RUVADD = ruv.add,
+      M1MIN = m1min,
+      M3MIN = m3min,
+      M1COV = m1cov,
+      M3COV = m3cov,
+      M1NSIM = m1.nsim,
+      M3NSIM = m3.nsim)
+    aovbioqtable
   }, vec = runvec)

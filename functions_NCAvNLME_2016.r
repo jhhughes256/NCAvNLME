@@ -180,7 +180,7 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
     tempresult2<-data.frame(i,sumstatsfrel[1,],sumstatsfrel[2,],sumstatsfrel[3,])
 	  fresult[i,] <- tempresult2
     sumstatscrat <- as.data.frame(geomeansemCI(cratio))
-    tempresult3<-data.frame(i,sumstatscrat[1,],sumstatscrat[2,],sumstatscrat[3,])
+    tempresult3 <- data.frame(i,sumstatscrat[1,],sumstatscrat[2,],sumstatscrat[3,])
 	  cresult[i,] <- tempresult3
     if(mode>=3) {
       sumstatsphfrel <- as.data.frame(geomeansemCI(phfrel))
@@ -303,7 +303,7 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
   }
 
   # Finds mean and 90% CI
-  sumfunc95 <- function(x)   # Called sumfunc95 as this is a quick fix
+  sumfunc90 <- function(x)
   {
     stat1 <-  mean(unlist(x), na.rm=T)
     stat2 <-  quantile(x, probs=0.05, na.rm=T, names=F)  #90%CI
@@ -342,9 +342,9 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 
 # Finds mean and 95% CI for specific dataset
   confint.func <- function(indata,method,variable) {
-    mean1 <- as.data.frame(sumfunc95(indata[[2]]))
-	  lo95 <- as.data.frame(sumfunc95(indata[[3]]))
-    hi95 <- as.data.frame(sumfunc95(indata[[4]]))
+    mean1 <- as.data.frame(sumfunc90(indata[[2]]))
+	  lo95 <- as.data.frame(sumfunc90(indata[[3]]))
+    hi95 <- as.data.frame(sumfunc90(indata[[4]]))
     VARIABLE <- c(paste(variable,"_LO95",sep=""),paste(variable,"_MEAN",sep=""),paste(variable,"_HI95",sep=""))
 	  ANALYSIS <- method
 	  CILO95 <- c(lo95[2,], mean1[2,], hi95[2,])
@@ -452,6 +452,8 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 
 # Process output from NONMEM
   nlme.fit <- function(SIM.name.out,FIT.dir,EST.dir,ctl.name,nsim,nid,limobs) {
+    nsub <- nid*nsim
+    SIM.file <- paste(master.dir,SIM.name.out,SIM.name.out,sep="/")
     fit2sim <- data.frame(matrix(NA, nrow = nsub*2, ncol = 11))
     colnames(fit2sim) <- c("UNQ_ID","STUD_ID","SIM_ID","AMT","F1","CL","Q","V2","V3","KA","AUC")
 	  ctl.num <- ifelse(ctl.name=="M1",1,3)
@@ -471,7 +473,7 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 	      fit.temp <- fit.temp[-c(4,6,7,8,9,17,18,19,20,21)]
 		    fit.temp[3] <- rep(rnum,times=nid*2)
 	      fit2sim[(1:(nid*2))+nid*2*(rnum-1),] <- fit.temp
-		    rnum <- rnum+1                                                              # Record how many sims were successful to ensure safe use of data with universal functions
+		    rnum <- rnum+1                                                              # Record how many sims were successful
 	    }else{
 	      fail.fit <- c(fail.fit,i)                                                   # Record rows that did not give a .fit file
 	    }
@@ -487,7 +489,7 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 # Should be used together, see NCA_v_NLME for details on its usage
   nlme.simtime <- function(tdf) {
    	minKA <- (log(2)/min(tdf$KA))*6
-	  TIME <- seq(from=0,to=minKA,by=minKA/200)
+	  TIME <- seq(from=0,to=minKA,by=minKA/168)
   }
 
   nlme.sim <- function(thetadf,TIME,nid,nsim) {
@@ -505,6 +507,7 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 	  tdf <- thetadf[-c(c1,c2,c3)]
 	  colnames(tdf)[1] <- "ID"
 	  sim.tdf <- mdply(tdf,simulate.2comp.abs)
+    print(nobs)
 	  result <- data.frame("UID"=uid,"SIM"=sim,"FORM"=form,sim.tdf,"AUC"=auc)
   }
  #####################################################
@@ -513,15 +516,21 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
  #####################################################
  #####################################################
 
-  runaov2 <- function(df, USE) {
+  runaov2 <- function(df.in, USE) {
   #debug
   #df <- EXP.data[EXP.data$REP==1,]
   #USE <- "AUC"
   #uselog <- T
+  #BE aov for study replicate
 
-  #BE aov for study replicate i
-    df$metric <- df[,USE]
-    result <- aov(log(metric)~FORM, data=df)
+    df.in$metric <- df.in[,USE]
+    non.log <- df.in$ID[df.in$metric <= 0]
+    if(length(non.log) != 0) {
+      df.out <- df.in[!(df.in$ID %in% non.log), ]
+    }else{
+      df.out <- df.in
+    }
+    result <- aov(log(metric)~FORMf+IDf, data=df.out)
     result2 <- summary(result)
 
   #This function avoids changing the contrasts for the aov
@@ -529,8 +538,8 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
     int <- confint(result, level=0.9) # FUNCTION TO CALCULATE CONFIDENCE INTERVAL OF LN DATA
 
   #Extracting aov results
-    Xt <- aovtable$tables$FORM[2]
-    Xr <- aovtable$tables$FORM[1]
+    Xt <- aovtable$tables$FORMf[2]
+    Xr <- aovtable$tables$FORMf[1]
 
     pointestimate <- exp(Xt-Xr)
     pointestimate

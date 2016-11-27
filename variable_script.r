@@ -1,57 +1,27 @@
-### --------------------------- NLMEvNCA BEAST ---------------------------- ###
-#          (NLME vs. NCA Bioequivalence Analysis Stimulation Tool)            #
-
-# As used in:
-#  Hughes JH, Upton RU, Foster DJ (2016)
-#  Comparison of Non-Compartmental and Mixed Effect Modelling Methods for
-#  Establishing Bioequivalence for the Case of Two Compartment Kinetics and
-#  Censored Concentrations
-
-# The code below enables the user to compare the ability of NLME program NONMEM
-#   and the automated NCA methods used by WinNonlin to determine the
-#   bioequivalence of a drug. The tool is made up of four files which are
-#   provided in the supplementary material of the paper. These files are:
-#     - main_script.r
-#     - function_utility.r
-#     - NONMEM_ref_M1.ctl
-#     - NONMEM_ref_m3.ctl
-#
-# DEPENDENCIES:
-#   - NONMEM installation (original tool was built with Version 7.2)
-#   - Wings for NONMEM (original tool was built with Version 720)
-#
-# To use the code, simply alter the data.frames and vectors below as
-#   specified by the comments.
-#
+### NONMEM vs. NCA in Bioequivalence Studies
+  # All values needing definition occur before simulation code
 # Remove any previous objects in the workspace
   rm(list=ls(all=TRUE))
   graphics.off()
 
-### INPUTS FOR ALTERATION -----------------------------------------------------
 
 # Source functions file and NONMEM .ctl reference txt
-#   Enter your desired directory as the master.dir
-#   The tool will create further directories within this directory for each
-#   scenario to be tested. It will also save the final table containing
-#   collated results into master directory (master.dir).
-  master.dir <- "E:/hscpw-df1/Data1/Jim Hughes/DDPLY"
+  master.dir <- "E:/hscpw-df1/Data1/Jim Hughes/DDPLY/PARAM_VARY"      ### Directory containing source files
   setwd(master.dir)
-
-#   If you have changed the names of the tool files alter them here
   source("functions_NCAvNLME_2016.r")
   ctlm1 <- readLines("NONMEM_ref_M1.ctl")  #No BSV or BOV on Q & V3
   ctlm3 <- readLines("NONMEM_ref_M3.ctl")
-
-# This refers to the Wings for NONMEM batch file, located in your local/remote
-#   NONMEM installation. The directory below is an example of what the path may
-#   look like.
-  wfn.dir <- "c:/nm72/wfn7/bin/wfn.bat"
+  rscript <- readLines("Rscript.r")
+  wfn.dir <- "c:/nm73ifort/wfn7/bin/wfn.bat"
 
 # Load libraries
-  library(doBy) # used for ordering of data.frames
-  library(plyr) # used for repeating functions
-  library(MASS) # used for covariance matrix
-  library(MBESS) # used for covariance matrix
+  library(ggplot2)
+  library(doBy)
+  library(plyr)
+  library(grid)
+  library(MASS)
+  library(MBESS)
+  library(parallel)
   set.seed(1234)
 
 # Specify run characteristics
@@ -59,76 +29,67 @@
   rundf <- data.frame(
     RUN = rep(1:7, each = 15), #rep(number.of.runs, each=number.of.scenarios)
     SCEN = rep(1:15, times = 7), #opposite of above
-    RUV.TYPE = rep(c(rep(1, 3),rep(2, 2)),21), #changing calculation of RUV
+    RUV.TYPE = rep(c(rep(1, 3),rep(2, 2)),21), #changing calculation of RUV for scenarios 10:15
     RUV.BLQ = rep(c(0.2, 0.15, 0.1, 0.1, 0.5), 21),
-    # changing Frel of generic and Frel BSV
-    F1.POP = rep(c(rep(1.0, 5), rep(0.9, 5), rep(1.11, 5)), 7),
-    F1.BSV = rep(c(rep(0.1225, 5), rep(0.0484, 5), rep(0.0529, 5)), 7),
-    BLQ = c(rep(0.01, 15), rep(0.1, 15),rep(0.01, 75)),  #base LLOQ
-    RUV.PROP = c(rep(0.05, 30), rep(0.09, 15), rep(0.05, 60)),#proportional RUV
-    # Run 4 - reduced sampling schedule
-    SS.TYPE = c(rep(1, 45), rep(2, 15), rep(1, 45)),
-    # Run 5 - 20% lower generic KA
-    KA.TYPE = c(rep(1, 60), rep(2, 15), rep(1, 30)),
-    # Run 6 & 7 - BOV testing
-    BOV.TYPE = c(rep(1, 75), rep(2, 15), rep(3, 15)))
+    F1.POP = rep(c(rep(1.0, 5), rep(0.9, 5), rep(1.11, 5)), 7), #changing Frel of generic
+    F1.BSV = rep(c(rep(0.1225, 5), rep(0.0484, 5), rep(0.0529, 5)), 7), #changing BSV on frel
+    BLQ = c(rep(0.01, 15), rep(0.1, 15),rep(0.01, 75)),  #Run 2 - raised LLOQ
+    RUV.PROP = c(rep(0.05, 30), rep(0.09, 15), rep(0.05, 60)),  #Run 3 - increased proportional RUV
+    SS.TYPE = c(rep(1, 45), rep(2, 15), rep(1, 45)),  #Run 4 - reduced sampling schedule
+    KA.TYPE = c(rep(1, 60), rep(2, 15), rep(1, 30)),  #Run 5 - 20% lower generic KA
+    BOV.TYPE = c(rep(1, 75), rep(2, 15), rep(3, 15)))  #Run 6 & 7 - BOV testing
 
-#  Set up values that are constant between runs
+  #set up values that are constant between runs
   runvec <- c(
-    NID = 24,  #number of patients per study
-    NSIM = 20,  #number of simulations
-    LIMITLO = 0.8,  #lower limit for bioequivalence
-    LIMITHI = 1.25,  #upper limit for bioequivlence
-    NCORE.M1 = 5,  #number of simultaneous instances of NONMEM running M1
-    NCORE.M3 = 20,  #number of simultaneous instances of NONMEM running M3
-    AMT = 125,  #dose of drug
-    # Population parameters (THETA)
-    CL.POP = 20,  #clearance
-    V2.POP = 100,  #central volume
-    Q.POP = 35,  #central/peripheral distribution
-    V3.POP = 400,  #peripheral volume
-    KA.POP = 0.5,  #(innovator) absorption rate constant
-    #   Only used if KA.TYPE is set to 2 - gives generic different absorption
-    KA.GEN = 0.3,  #generic absorption rate constant
-    # Between subject variability parameters (ETA)
-    CL.BSV = 0.045,  #clearance
-    V2.BSV = 0.045,  #central volume
-    V3.BSV = 0.045,   #peripheral volume
-    Q.BSV = 0.045,  #central/peripheral distribution
-    KA.BSV = 0.01,  #absorption rate
-    # Between occasion variability parameters (ETA)
-    CL.BOV = 0.045,  #clearance
-    V2.BOV = 0.045,  #central volume
-    V3.BOV = 0.045,  #peripheral volume
-    Q.BOV = 0.045,  #central/peripheral distribution
-    #   Only used if BOV.TYPE is set to 2 or 3 - effectively removes BOV
+    NID = 24,
+    NSIM = 500,
+    LIMITLO = 0.8,
+    LIMITHI = 1.25,
+    NCORE.M1 = 5,
+    NCORE.M3 = 20,
+    AMT = 125,
+    CL.POP = 20,
+    V2.POP = 100,
+    Q.POP = 35,
+    V3.POP = 400,
+    KA.POP = 0.5,
+    KA.GEN = 0.3,
+    CL.BSV = 0.045,
+    V2.BSV = 0.045,
+    V3.BSV = 0.045,
+    Q.BSV = 0.045,
+    KA.BSV = 0.01,
+    CL.BOV = 0.045,
+    V2.BOV = 0.045,
+    V3.BOV = 0.045,
+    Q.BOV = 0.045,
     ALT.BOV = 0.0001)
 
-  # Set up time vector for simulation
+  #set up time vector for simulation
   timevec <- c(
     seq(0, 3, 0.05),
     seq(3.25, 6, 0.25),
     seq(6.5, 12, 0.5),
     seq(13, 96, 1))
-  TIME <- timevec  #TIME required in .GlobalEnv for simulate.2comp.abs()
+  TIME <- timevec
 
-  # Set up time vector for truncated samples
-  #   These are the times of the samples that will be analysed by NCA & NLME
-  #   T1 is used if SS.TYPE == 1, T2 is used if SS.TYPE == 2
-  sstimelist <- list(
-    T1 = c(0,0.25,0.5,1,2,4,6,8,12,16,24,36,48,72,96),
-    T2 = c(0,0.25,0.5,1,2,4,8,16,36,96))
-
-  # Set up correlation vector for simulation
+  #set up correlation vector for simulation
   corvec <- c(
     1, 0.3, 0.3, 0.3,
     0.3, 1, 0.3, 0.3,
     0.3, 0.3, 1, 0.3,
     0.3, 0.3 ,0.3 , 1)
 
-### END OF INPUTS FOR ALTERATION ----------------------------------------------
+  varydf <- data.frame(
+    CL = rnorm(runvec["NSIM"],mean=0,sd=0.1*runvec["CL.POP"]),
+    V2 = rnorm(runvec["NSIM"],mean=0,sd=0.1*runvec["V2.POP"]),
+    Q = rnorm(runvec["NSIM"],mean=0,sd=0.1*runvec["Q.POP"]),
+    V3 = rnorm(runvec["NSIM"],mean=0,sd=0.1*runvec["V3.POP"]),
+    KA = rnorm(runvec["NSIM"],mean=0,sd=0.1*runvec["KA.POP"])
+  )
 
-### FIRST HALF ----------------------------------------------------------------
+
+### FIRST HALF -----------------------------------------------------------------
   # First loop includes
   # 1. Simulation of data
   # 2. Initial analysis of simulated data
@@ -137,14 +98,7 @@
   # 5. Non-Linear Mixed Effects
   # 6. Create .r script for loading
 
-  ddply(rundf[10:45, ], .(RUN, SCEN), function(df, vec, time, cor, limtime) {
-### Object names within ddply function
-#     rundf -> df     (index using dollar sign df$index)
-#     runvec -> vec   (index using square brackets ["index"])
-#     timevec -> time
-#     corvec -> cor
-#     sstimelist -> timelist (index using dollar sign)
-
+  ddply(rundf[2, ], .(RUN, SCEN), function(df, vec, time, cor, vary) {
 ### 1. Simulation of data
   #Set working directory and file names
     SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
@@ -155,36 +109,28 @@
     FIT.dir <- paste(SIM.dir,"fit",sep="/")
 
   # Define study design
-  #   This takes many of the values specified above
     nid <- vec["NID"]
     nsim <- vec["NSIM"]
-    nsub <- nid*nsim  #total number of subjects
-    nobs <- length(time)  #number of observations per simulation
-  #   SS.TYPE determines which sampling time is used as stated above
+    nsub <- nid*nsim
+    nobs <- length(time)
     if (df$SS.TYPE == 1) {
-      sstime <- limtime$T1
+      sstime <- c(0,0.25,0.5,1,2,4,6,8,12,16,24,36,48,72,96)
     } else {
-      sstime <- limtime$T2
+      sstime <- c(0,0.25,0.5,1,2,4,8,16,36,96)
     }
 
   # Define random unexplained variability (SIGMA) values
-  #   RUV.TYPE determines which method of determining additive RUV is used
     ruv.prop <- df$RUV.PROP
     ruv.blq <- df$RUV.BLQ
     blq <- df$BLQ
-  #   additive RUV and CV at the LOQ change between Scenarios
-  #   lloq stays constant
     if (df$RUV.TYPE == 1) {  #Scenarios 1-9
       ruv.add <- (ruv.blq - ruv.prop) * blq
       trunc.blq <- blq
     }
-  #   lloq and CV at the LOQ change between Scenarios
-  #   additive RUV stays constant
     if (df$RUV.TYPE == 2) {  #Scenarios 10-15
       ruv.add <- (0.2 - ruv.prop) * blq
       trunc.blq <- ruv.add/(ruv.blq - ruv.prop)
     }
-  #   object to be placed into nonmem control stream template
     ruv.add.nm <- ifelse(blq == 0 || ruv.add == 0,
       paste(ruv.add, "FIX"),
       ruv.add
@@ -196,35 +142,29 @@
 
   # Correlation between parameters
     cormat <- matrix(cor, nrow = 4, ncol = 4)
-    std.bsv <- c(
-      sqrt(vec["CL.BSV"]),sqrt(vec["V2.BSV"]),
-      sqrt(vec["Q.BSV"]),sqrt(vec["V3.BSV"]))
+    std.bsv <- c(sqrt(vec["CL.BSV"]),sqrt(vec["V2.BSV"]),sqrt(vec["Q.BSV"]),sqrt(vec["V3.BSV"]))
     omega <- cor2cov(cormat, std.bsv)
 
   # Account for random BSV
-  #   Produce samples from multi-variate normal distribution as specified by
-  #   omega block created above.
     etamat <- mvrnorm(n = nsub, mu = c(0, 0, 0, 0), omega)
-    ETA1 <- rep(etamat[, 1], each = 2)  # CLbsv
-    ETA2 <- rep(etamat[, 2], each = 2)  # V2bsv
-    ETA3 <- rep(etamat[, 3], each = 2)  # Qbsv
-    ETA4 <- rep(etamat[, 4], each = 2)  # V3bsv
-  #   Produce samples from normal distribution as specifed in the function
-  #   If statements for runs with differing BSV & BOV.TYPE
-    if (vec["KA.BSV"] == 0) {
-      ETA5 <- rep(0, times = nsub)  # KA (no bsv)
+    ETA1 <- rep(etamat[,1],each=2)  # CLbsv
+    ETA2 <- rep(etamat[,2],each=2)  # V2bsv
+    ETA3 <- rep(etamat[,3],each=2)  # Qbsv
+    ETA4 <- rep(etamat[,4],each=2)  # V3bsv
+    if (vec["KA.BSV"]==0){
+      ETA5 <- rep(0, times=nsub)  # KA (no bsv)
     } else {
-      ETA5 <- rnorm(nsub, mean = 0, sd = sqrt(vec["KA.BSV"]))  # KA (bsv)
+      ETA5 <- rnorm(nsub,mean=0,sd=sqrt(vec["KA.BSV"]))  # KA (bsv)
     }
-    if (df$F1.BSV == 0) {
-      ETA6 <- rep(0, times = nsub)  # F1 (no bsv)
+    if (df$F1.BSV==0){
+      ETA6 <- rep(0, times=nsub)  # F1 (no bsv)
     } else {
-      ETA6 <- rnorm(nsub, mean = 0, sd = sqrt(df$F1.BSV))  # F1 (bsv)
+      ETA6 <- rnorm(nsub,mean=0,sd=sqrt(df$F1.BSV))  # F1 (bsv)
     }
     if (df$BOV.TYPE != 2) {
-      ETA7 <- rnorm(nsub * 2, mean = 0, sd = sqrt(vec["CL.BOV"]))  # CLbov
+      ETA7 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["CL.BOV"]))  # CLbov
     } else {
-      ETA7 <- rnorm(nsub * 2, mean = 0, sd = sqrt(vec["ALT.BOV"]))  # CLbov
+      ETA7 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["ALT.BOV"]))  # CLbov
     }
     if (df$BOV.TYPE == 1) {
       ETA8 <- rnorm(nsub*2,mean=0,sd=sqrt(vec["V2.BOV"]))  # V2bov
@@ -241,57 +181,61 @@
       ETA11 <- rnorm(nsub,mean=0,sd=sqrt(vec["KA.BSV"]))  # KA (bsv)
     }
 
+    ka.param.pop <- vec["KA.POP"] + vary$KA
+    if (df$KA.TYPE == 1) {
+      ka.theta <- rep(ka.param.pop * exp(ETA5), each = 2)
+    } else {
+      ka.param.gen <- vec["KA.GEN"] + vary$KA
+      ka.theta <- as.vector(rbind(
+        ka.param.pop * exp(ETA5), ka.param.gen * exp(ETA11)
+      ))
+    }
+
   # Create/clear directories before run
     dir.setup(SIM.dir)
     dir.setup(EST.dir)
     dir.setup(FIT.dir)
     nm.clear(EST.dir, nsim*2)
 
-  # Determine KA individual values -> dependent on KA.TYPE
-    if (df$KA.TYPE == 1) {
-      ka.val <- rep(vec["KA.POP"] * exp(ETA5), each = 2)
-    } else {
-      ka.val <- as.vector(rbind(vec["KA.POP"] * exp(ETA5), vec["KA.GEN"] * exp(ETA11)))
-    }
-
   # Define theta table
+    paramdf <- data.frame(
+      SIM = 1:nsim,
+      AMT = vec["AMT"],
+      CL = vec["CL.POP"] + vary$CL,
+      V2 = vec["V2.POP"] + vary$V2,
+      Q = vec["Q.POP"] + vary$Q,
+      V3 = vec["V3.POP"] + vary$V3,
+      KA = ka.param.pop)
+    write.csv(paramdf, file = paste(SIM.file, "PARAM_VARY.csv", sep = "_"), row.names = F)
+    names(paramdf)[1] <- "ID"
+
     thetadf <- data.frame(
+      SIM = rep(1:nsim, each = nid*2),
       ID = rep(1:nid, times = nsim, each = 2),
       AMT = rep(vec["AMT"], times = nsub * 2),
       FORM = rep(1:2, times = nsub),
-      CL = vec["CL.POP"] * exp(ETA1 + ETA7),
-      V2 = vec["V2.POP"] * exp(ETA2 + ETA8),
-      Q = vec["Q.POP"] * exp(ETA3 + ETA9),
-      V3 = vec["V3.POP"] * exp(ETA4 + ETA10),
-      KA = ka.val,
+      CL = paramdf$CL * exp(ETA1 + ETA7),
+      V2 = paramdf$V2 + vary$V2 * exp(ETA2 + ETA8),
+      Q = paramdf$Q + vary$Q * exp(ETA3 + ETA9),
+      V3 = paramdf$V3 + vary$V3 * exp(ETA4 + ETA10),
+      KA = ka.theta,
       F1 = as.vector(rbind(df$F1.POP * exp(ETA6), rep(1, nsim))))
     write.csv(thetadf, file = paste(SIM.file, "THETAS.csv", sep = "_"), row.names = F)
     thetadf$FORM <- NULL
+    thetadf$SIM <- NULL
 
   # Population simulation
-    simdataPRED1 <- simulate.2comp.abs(
-      ID = 0,
-      AMT = vec["AMT"],
-      CL = vec["CL.POP"],
-      Q = vec["Q.POP"],
-      V2 = vec["V2.POP"],
-      V3 = vec["V3.POP"],
-      KA = vec["KA.POP"],
-      F1 = 1)
-    names(simdataPRED1) <- c("TIME", "PRED")
-    simdataPRED1$FORM <- rep(1, times = nobs)
+    paramdf.inn <- paramdf
+    paramdf.inn$F1 <- 1
+    simdataPRED1 <- mdply(paramdf.inn, simulate.2comp.abs)[c(1,9:10)]
+    names(simdataPRED1)[c(1,3)] <- c("SIM","PRED")
+    simdataPRED1$FORM <- rep(1, times = nobs*nsim)
 
-    simdataPRED2 <- simulate.2comp.abs(
-      ID = 0,
-      AMT = vec["AMT"],
-      CL = vec["CL.POP"],
-      Q = vec["Q.POP"],
-      V2 = vec["V2.POP"],
-      V3 = vec["V3.POP"],
-      KA = vec["KA.POP"],
-      F1 = df$F1.POP)
-    names(simdataPRED2) <- c("TIME", "PRED")
-    simdataPRED2$FORM <- rep(2, times = nobs)
+    paramdf.gen <- paramdf
+    paramdf.gen$F1 <- df$F1.POP
+    simdataPRED2 <- mdply(paramdf.gen, simulate.2comp.abs)[c(1,9:10)]
+    names(simdataPRED2)[c(1,3)] <- c("SIM","PRED")
+    simdataPRED2$FORM <- rep(2, times = nobs*nsim)
 
     simdataPRED <- rbind(simdataPRED1, simdataPRED2)
 
@@ -303,10 +247,9 @@
     simdataIPRED$FORM <- ifelse(simdataIPRED$F1 == 1, 1, 2)
 
   # Combine PRED and IPRED
-  #   Order of operations specified below
-    simdata <- orderBy(~UID + FORM + TIME,  #SECOND: order by these columns
-      merge(simdataIPRED, simdataPRED, all = T)  #FIRST: merge dataframes
-    )[  #THIRD: reorder columns
+    simdata <- orderBy(~UID + FORM + TIME,
+      merge(simdataIPRED, simdataPRED, all = T)
+    )[
       c("UID", "ID", "SIM", "TIME", "AMT", "FORM",
       "CL", "V2", "Q", "V3", "KA", "F1", "PRED", "IPRED")
     ]
@@ -317,21 +260,18 @@
     EPS1 <- rnorm(tnobs, mean = 0, sd = ruv.prop)
     EPS2 <- rnorm(tnobs, mean = 0, sd = ruv.add)
     simdata$DV <- CP * (1 + EPS1) + EPS2
-  # Remove residual error from TIME == 0
     simdata$DV <- ifelse(simdata$TIME == 0, 0, simdata$DV)
 
   # Save simulation file
-    write.csv(simdata, file = paste0(SIM.file, "_RAW.csv"), row.names = F)
+    write.csv(simdata, file = paste(SIM.file, "_RAW.csv", sep = ""), row.names = F)
 
 ### 2. Initial analysis of simulated data
   # Process results for IPRED (see functions utility)
     data.process(simdata,TIME,nid,nsim,SIM.file,trunc.blq,mode=1)
-
 ### 3. Non-Compartmental Analysis
 ### 4. Initial analysis of NCA data
   # Process results for NCA with truncation (see functions utility)
     data.process(simdata,sstime,nid,nsim,SIM.file,trunc.blq,mode=2)
-
 ### 5. Non-Linear Mixed Effects
   # Source truncated dataset from NCA data.process function
     trunc.file <- paste(SIM.name.out,"TRUNCATED.csv",sep="_")
@@ -392,11 +332,11 @@
     }
     setwd(master.dir)
     print(paste(SIM.name.out,"complete"))
-  }, vec = runvec, time = timevec, cor = corvec, limtime = sstimelist)
+  }, vec = runvec, time = timevec, cor = corvec, vary = varydf)
 
 ### SECOND HALF ----------------------------------------------------------------
 
-  bioqtable <- ddply(rundf[10:45, ], .(RUN, SCEN), function(df, vec, time, limtime) {
+  bioqtable <- ddply(rundf[2, ], .(RUN, SCEN), function(df, vec, time) {
   #Set working directory
     SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
     SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
@@ -694,7 +634,7 @@
       M1NSIM = m1.nsim,
       M3NSIM = m3.nsim)
     aovbioqtable
-  }, vec = runvec, time = timevec, limtime = sstimelist)
+  }, vec = runvec, time = timevec)
   write.csv(bioqtable,
     file = paste(master.dir, "collated_bioq_table.csv", sep = "/"),
     row.names = F)

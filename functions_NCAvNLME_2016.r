@@ -411,16 +411,57 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 # Control Stream creating function
 # Can be used for mass replacement of specific parts of a .txt file
 # pat and repl are vectors that represent each pattern to be replaced and each replacement respectively
-  ctl.rep <- function(pat,repl,ctl) {
-    tempctl <- ctl
-    if(length(pat)==length(repl)) {
+
+  ctl.prep <- function(ctl, var, const, omega, ruvprop, ruvadd, blq) {
+    #For difference in .ctl for Run 7-8
+    if (var$KA.TYPE == 2) {
+      #change the ctl so that it accounts for a different KA for generic
+      ctl[13] <- "  (0.001,genkapop,) ; GENKA"
+      ctl[43:44] <- c("", "  TVF1=THETA(7)")
+      ctl[51:52] <- c("  RUVPROP=THETA(8)", "  RUVADD=THETA(9)")
+      ctl[55] <- "    TVKA=THETA(5)"
+      ctl[60] <- "    TVKA=THETA(6)"
+    }
+
+    #For difference in .ctl for Run 11-14
+    if (var$BOV.TYPE >= 2) {  #if testing for no bov
+      #change the ctl so that it no longer fits for bov
+      ctl[c(27:29, 57, 62)] <- rep("", times = 5)
+      ctl[67] <- "  V2 = TVCL*EXP(BSVV2)"
+      if(var$BOV.TYPE == 2) {
+        ctl[c(24:26, 56, 61)] <- rep("", times = 5)
+        ctl[66] <- c("  CL = TVV2*EXP(BSVCL)")
+      }
+    }
+
+    #Insert values into .ctl
+    input.vector <- c(
+      const["CL.POP"], const["V2.POP"], const["V3.POP"], const["Q.POP"],
+      var$F1.POP, const["KA.POP"], const["KA.GEN"],
+      const["CL.BSV"], const["V2.BSV"], const["V3.BSV"], const["Q.BSV"],
+      var$F1.BSV, const["KA.BSV"], blq,
+      const["CL.BOV"], const["V2.BOV"], const["V3.BOV"], const["Q.BOV"],
+      omega[2,1], omega[3,1], omega[3,2], omega[4,1], omega[4,2], omega[4,3],
+      ruvprop, ruvadd)
+    phrase.vector <- c("clpop", "v2pop", "v3pop", "qpop", "f1pop", "innkapop", "genkapop",
+      "clbsv", "v2bsv", "v3bsv", "qbsv", "kabsv", "f1bsv",
+      "blq", "clbov", "v2bov", "v3bov", "qbov",
+      "mat21", "mat31", "mat32", "mat41", "mat42", "mat43",
+      "ruvprop", "ruvadd")
+
+    ctl.out <- gsub.all(phrase.vector,input.vector, ctl)
+  }
+
+  gsub.all <- function(pat,repl,x) {
+    vec <- x
+    if(length(pat) == length(repl)) {
       for(i in 1:length(pat)) {
-	      tempctl <- gsub(pat[i],repl[i],tempctl)
-	    }
-	    tempctl
-	  }else{
-	    warning("length(pattern)!=length(replacement): Amount of values to be replaced is not equal to amount of values given")
-	  }
+        vec <- gsub(pat[i], repl[i], vec, fixed=TRUE)
+      }
+      vec
+    }else{
+      warning("length(pattern)!=length(replacement): Amount of values to be replaced is not equal to amount of values given")
+    }
   }
 
 # NONMEM Batch File creating function (also directs NONMEM to the .csv file by changing "dataname" in the controls stream)
@@ -507,7 +548,6 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 	  tdf <- thetadf[-c(c1,c2,c3)]
 	  colnames(tdf)[1] <- "ID"
 	  sim.tdf <- mdply(tdf,simulate.2comp.abs)
-    print(nobs)
 	  result <- data.frame("UID"=uid,"SIM"=sim,"FORM"=form,sim.tdf,"AUC"=auc)
   }
  #####################################################

@@ -495,7 +495,7 @@
     mbt$Success <- gsub("TERMINATED",0,mbt$Min)
     mbt <- orderBy(~Method+ModelNum,mbt)
     m1.term <- which(mbt$Success == 0 & mbt$Method == 1)
-    m3.term <- which(mbt$Success == 0 & mbt$Method == 2) - 20
+    m3.term <- which(mbt$Success == 0 & mbt$Method == 2) - nsim
 
     m1mbt <- mbt[mbt$Method == 1, c(1,5,6)] #m1
     m1mbt$Min <- gsub("SUCCESSFUL",1,m1mbt$Min)
@@ -607,8 +607,6 @@
       caov$METH == "M1F1" & caov$SIM %in% m1.term |
       caov$METH == "M3F1" & caov$SIM %in% m3.term |
       caov$METH == "M1PH" | caov$METH == "M3PH"), ]
-    ipred.faov.termstat <- faov.termstat[faov.termstat$METH == "IPRED", ]
-    ipred.caov.termstat <- caov.termstat[caov.termstat$METH == "IPRED", ]
 
     meth.faov.termstat <- faov.termstat[faov.termstat$METH != "IPRED", ]
     meth.faov.termstat$IPRED.BE <- c(

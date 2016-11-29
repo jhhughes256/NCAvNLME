@@ -362,12 +362,10 @@
       M3MIN = m3min,
       M1COV = m1cov,
       M3COV = m3cov,
-      M1NSIM = m1.nsim,
-      M1TERM = length(m1.term),
+      M1NSIM = c(m1.nsim, m1.nsim - length(m1.term)),
       M1IPREDBE = c(ipred.fbioq$V1[1]*100,ipred.fbioq.termstat$V1[1]*100),
       M1IPREDCM = c(ipred.cbioq$V1[1]*100,ipred.cbioq.termstat$V1[1]*100),
-      M3NSIM = m3.nsim,
-      M3TERM = length(m3.term),
+      M3NSIM = c(m3.nsim, m3.nsim - length(m3.term)),
       M3IPREDBE = c(ipred.fbioq$V1[3]*100,ipred.fbioq.termstat$V1[3]*100),
       M3IPREDCM = c(ipred.cbioq$V1[3]*100,ipred.cbioq.termstat$V1[3]*100))
     aovbioqtable
@@ -514,23 +512,31 @@
       term.shk$Term <- "Success"
       comb.shk <- rbind(sub.shk, term.shk)
 
-      ddply(comb.shk, .(Term, Method), function(x) {
-        y <- data.frame(
-          Stat = c("Min", "Q1", "Med", "Mean", "Q3", "Max"),
-          colwise(summary)(x[5:l.shk]))
-        z <- dcast(melt(y, "Stat"), variable~Stat)[c(1,5,6,4,3,7,2)]
-        names(z)["variable"] <- "ETA"
-        z
-      })
+      #insert alternate ending here
     }, vec = runvec, time = timevec, shk = shrink.data)
-    shrink.sum <- arrange(shrink.sum, RUN, SCEN, Method, ETA)
-    shk.filename <- paste(master.dir, "summaryall_shrinkage_data.csv", sep = "/")
+    shrink.sum <- arrange(shrink.sum, RUN, SCEN, Method, variable)
+    shk.filename <- paste(master.dir, "collatedterm_shrinkage_data.csv", sep = "/")
     write.csv(shrink.sum,
       file = shk.filename,
       row.names = F)
+      #removing everything between
 
-    shrink.sum <- arrange(shrink.sum, RUN, Method, ETA)
-    shk.filename <- paste(master.dir, "summarysub_shrinkage_data.csv", sep = "/")
-    write.csv(shrink.sum[shrink.sum$Term == "Success", ],
-      file = shk.filename,
-      row.names = F)
+# Alternate ending
+#      ddply(comb.shk, .(Term, Method), function(x) {
+#        y <- data.frame(
+#          Stat = c("Min", "Q1", "Med", "Mean", "Q3", "Max"),
+#          colwise(summary)(x[5:l.shk]))
+#        z <- dcast(melt(y, "Stat"), variable~Stat)[c(1,5,6,4,3,7,2)]
+#      })
+#    }, vec = runvec, time = timevec, shk = shrink.data)
+#    shrink.sum <- arrange(shrink.sum, RUN, SCEN, Method, variable)
+#    shk.filename <- paste(master.dir, "summaryall_shrinkage_data.csv", sep = "/")
+#    write.csv(shrink.sum,
+#      file = shk.filename,
+#      row.names = F)
+#
+#    shrink.sum <- arrange(shrink.sum, RUN, Method, variable)
+#    shk.filename <- paste(master.dir, "summarysub_shrinkage_data.csv", sep = "/")
+#    write.csv(shrink.sum[shrink.sum$Term == "Success", ],
+#      file = shk.filename,
+#      row.names = F)

@@ -2,6 +2,10 @@
   rm(list=ls(all=TRUE))
   graphics.off()
 
+  library(plyr)
+  library(ggplot2)
+  library(reshape2)
+
 # Choose the directory you wish to compile results from
   master.dir <- "E:/hscpw-df1/Data1/Jim Hughes/2016"
   setwd(master.dir)
@@ -16,66 +20,180 @@
   df.r1114 <- read.csv(paste(dir.r1114, file.name, sep="/"))
   df.all <- rbind(df.r16, df.r78, df.r910, df.r1114)
   df.sub1 <- df.all[1:29]
-  df.sub2 <- df.all[30:39]
+  df.sub2 <- df.all[30:43]
+
+  shk.file.name <- "collated_shrinkage_data.csv"
+  shk.r16 <- read.csv(paste(dir.r16, shk.file.name, sep="/"))
+  shk.r78 <- read.csv(paste(dir.r78, shk.file.name, sep="/"))
+  shk.r910 <- read.csv(paste(dir.r910, shk.file.name, sep="/"))
+  shk.r1114 <- read.csv(paste(dir.r1114, shk.file.name, sep="/"))
+  shk.r1114$ETA.7. <- NA
+  shk.r1114$ETA.8. <- NA
+  shk.all <- rbind(shk.r16, shk.r78, shk.r910, shk.r1114)
+  shk.all$X1 <- NULL
+  names(shk.all) <- c("RUN", "SCEN", "SIM", "METH", "BSVCL", "BSVV2", "BSVKA",
+    "BSVF1", "BOVCL1", "BOVCL2", "BOVV21", "BOVV22")
 
   nsim <- 500
   nbioq <- df.all$IPREDBE*nsim/100
-  nbioq.m1 <- df.all$IPREDBE*nsim/100
-  nbioq.m3 <- df.all$IPREDBE*nsim/100
+  nbioq.m1 <- df.all$M1IPREDBE*df.all$M1NSIM/100
+  nbioq.m3 <- df.all$M3IPREDBE*df.all$M3NSIM/100
   nnonb <- nsim - nbioq
-  nnonb.m1 <- nsim - nbioq.m1
-  nnonb.m3 <- nsim - nbioq.m3
+  nnonb.m1 <- df.all$M1NSIM - nbioq.m1
+  nnonb.m3 <- df.all$M3NSIM - nbioq.m3
 
-  cnbioq <-
-  cnnonb <- nsim - nbioq
+  cnbioq <- df.all$IPREDCM*nsim/100
+  cnbioq.m1 <- df.all$M1IPREDCM*df.all$M1NSIM/100
+  cnbioq.m3 <- df.all$M3IPREDCM*df.all$M3NSIM/100
+  cnnonb <- nsim - cnbioq
+  cnnonb.m1 <- df.all$M1NSIM - cnbioq.m1
+  cnnonb.m3 <- df.all$M3NSIM - cnbioq.m3
 
   ncaTP <- nbioq - df.all$NCAFT2*nsim/100
   ncaTN <- nnonb - df.all$NCAFT1*nsim/100
-  cncaTP <- nbioq - df.all$NCACT2*nsim/100
-  cncaTN <- nnonb - df.all$NCACT1*nsim/100
+  cncaTP <- cnbioq - df.all$NCACT2*nsim/100
+  cncaTN <- cnnonb - df.all$NCACT1*nsim/100
 
-  m1f1TP <- nbioq - df.all$M1F1FT2*nsim/100
-  m1f1TN <- nnonb - df.all$M1F1FT1*nsim/100
-  cm1TP <- nbioq - df.all$M1CT2*nsim/100
-  cm1TN <- nnonb - df.all$M1CT1*nsim/100
+  m1f1TP <- nbioq.m1 - df.all$M1F1FT2*df.all$M1NSIM/100
+  m1f1TN <- nnonb.m1 - df.all$M1F1FT1*df.all$M1NSIM/100
+  cm1TP <- cnbioq.m1 - df.all$M1CT2*df.all$M1NSIM/100
+  cm1TN <- cnnonb.m1 - df.all$M1CT1*df.all$M1NSIM/100
 
-  m1phTP <- nbioq - df.all$M1PHFT2*nsim/100
-  m1phTN <- nnonb - df.all$M1PHFT1*nsim/100
+  m1phTP <- nbioq.m1 - df.all$M1PHFT2*df.all$M1NSIM/100
+  m1phTN <- nnonb.m1 - df.all$M1PHFT1*df.all$M1NSIM/100
 
-  m3f1TP <- nbioq - df.all$M3F1FT2*nsim/100
-  m3f1TN <- nnonb - df.all$M3F1FT1*nsim/100
-  cm3TP <- nbioq - df.all$M3CT2*nsim/100
-  cm3TN <- nnonb - df.all$M3CT1*nsim/100
+  m3f1TP <- nbioq.m3 - df.all$M3F1FT2*df.all$M3NSIM/100
+  m3f1TN <- nnonb.m3 - df.all$M3F1FT1*df.all$M3NSIM/100
+  cm3TP <- cnbioq.m3 - df.all$M3CT2*df.all$M3NSIM/100
+  cm3TN <- cnnonb.m3 - df.all$M3CT1*df.all$M3NSIM/100
 
-  m3phTP <- nbioq - df.all$M3PHFT2*nsim/100
-  m3phTN <- nnonb - df.all$M3PHFT1*nsim/100
+  m3phTP <- nbioq.m3 - df.all$M3PHFT2*df.all$M3NSIM/100
+  m3phTN <- nnonb.m3 - df.all$M3PHFT1*df.all$M3NSIM/100
 
-  df.sub1$NCAFSENS <- ncaTP/nbioq
-  df.sub1$M1F1FSENS <- m1f1TP/nbioq
-  df.sub1$M1PHFSENS <- m1phTP/nbioq
-  df.sub1$M3F1FSENS <- m3f1TP/nbioq
-  df.sub1$M3PHFSENS <- m3phTP/nbioq
+  df.sub1$NCAFSENS <- ncaTP/nbioq*100
+  df.sub1$M1F1FSENS <- m1f1TP/nbioq.m1*100
+  df.sub1$M1PHFSENS <- m1phTP/nbioq.m1*100
+  df.sub1$M3F1FSENS <- m3f1TP/nbioq.m3*100
+  df.sub1$M3PHFSENS <- m3phTP/nbioq.m3*100
 
-  df.sub1$NCAFSPEC <- ncaTN/nnonb
-  df.sub1$M1F1FSPEC <- m1f1TN/nnonb
-  df.sub1$M1PHFSPEC <- m1phTN/nnonb
-  df.sub1$M3F1FSPEC <- m3f1TN/nnonb
-  df.sub1$M3PHFSPEC <- m3phTN/nnonb
+  df.sub1$NCAFSPEC <- ncaTN/nnonb*100
+  df.sub1$M1F1FSPEC <- m1f1TN/nnonb.m1*100
+  df.sub1$M1PHFSPEC <- m1phTN/nnonb.m1*100
+  df.sub1$M3F1FSPEC <- m3f1TN/nnonb.m3*100
+  df.sub1$M3PHFSPEC <- m3phTN/nnonb.m3*100
 
-  df.sub1$NCAFACC <- (ncaTP+ncaTN)/nsim
-  df.sub1$M1F1FACC <- (m1f1TP+m1f1TN)/nsim
-  df.sub1$M1PHFACC <- (m1phTP+m1phTN)/nsim
-  df.sub1$M3F1FACC <- (m3f1TP+m3f1TN)/nsim
-  df.sub1$M3PHFACC <- (m3phTP+m3phTN)/nsim
+  df.sub1$NCAFACC <- (ncaTP+ncaTN)/nsim*100
+  df.sub1$M1F1FACC <- (m1f1TP+m1f1TN)/df.all$M1NSIM*100
+  df.sub1$M1PHFACC <- (m1phTP+m1phTN)/df.all$M1NSIM*100
+  df.sub1$M3F1FACC <- (m3f1TP+m3f1TN)/df.all$M3NSIM*100
+  df.sub1$M3PHFACC <- (m3phTP+m3phTN)/df.all$M3NSIM*100
 
-  df.sub1$NCACSENS <- cncaTP/nbioq
-  df.sub1$M1CSENS <- cm1TP/nbioq
-  df.sub1$M3CSENS <- cm3TP/nbioq
+  df.sub1$NCACSENS <- cncaTP/nbioq*100
+  df.sub1$M1CSENS <- cm1TP/nbioq.m1*100
+  df.sub1$M3CSENS <- cm3TP/nbioq.m3*100
 
-  df.sub1$NCACSPEC <- cncaTN/nnonb
-  df.sub1$M1CSPEC <- cm1TN/nnonb
-  df.sub1$M3CSPEC <- cm3TN/nnonb
+  df.sub1$NCACSPEC <- cncaTN/nnonb*100
+  df.sub1$M1CSPEC <- cm1TN/nnonb.m1*100
+  df.sub1$M3CSPEC <- cm3TN/nnonb.m3*100
 
-  df.sub1$NCACACC <- (cncaTP+cncaTN)/nsim
-  df.sub1$M1CACC <- (cm1TP+cm1TN)/nsim
-  df.sub1$M3CACC <- (cm3TP+cm3TN)/nsim
+  df.sub1$NCACACC <- (cncaTP+cncaTN)/nsim*100
+  df.sub1$M1CACC <- (cm1TP+cm1TN)/df.all$M1NSIM*100
+  df.sub1$M3CACC <- (cm3TP+cm3TN)/df.all$M3NSIM*100
+
+  df.final <- data.frame(df.sub1, df.sub2)
+
+  df.final.all <- df.final[df.final$TERMSTAT == "All", ]
+  df.final.suc <- df.final[df.final$TERMSTAT == "Only Success", ]
+
+  df.diff <- data.frame(
+    M1F1.F.SPEC = df.final.suc$M1F1FSPEC - df.final.all$M1F1FSPEC,
+    M1PH.F.SPEC = df.final.suc$M1PHFSPEC - df.final.all$M1PHFSPEC,
+    M3F1.F.SPEC = df.final.suc$M3F1FSPEC - df.final.all$M3F1FSPEC,
+    M3PH.F.SPEC = df.final.suc$M3PHFSPEC - df.final.all$M3PHFSPEC,
+    M1F1.F.SENS = df.final.suc$M1F1FSENS - df.final.all$M1F1FSENS,
+    M1PH.F.SENS = df.final.suc$M1PHFSENS - df.final.all$M1PHFSENS,
+    M3F1.F.SENS = df.final.suc$M3F1FSENS - df.final.all$M3F1FSENS,
+    M3PH.F.SENS = df.final.suc$M3PHFSENS - df.final.all$M3PHFSENS,
+    M1F1.F.ACC = df.final.suc$M1F1FACC - df.final.all$M1F1FACC,
+    M1PH.F.ACC = df.final.suc$M1PHFACC - df.final.all$M1PHFACC,
+    M3F1.F.ACC = df.final.suc$M3F1FACC - df.final.all$M3F1FACC,
+    M3PH.F.ACC = df.final.suc$M3PHFACC - df.final.all$M3PHFACC,
+    M1.C.SPEC = df.final.suc$M1CSPEC - df.final.all$M1CSPEC,
+    M3.C.SPEC = df.final.suc$M3CSPEC - df.final.all$M3CSPEC,
+    M1.C.SENS = df.final.suc$M1CSENS - df.final.all$M1CSENS,
+    M3.C.SENS = df.final.suc$M3CSENS - df.final.all$M3CSENS,
+    M1.C.ACC = df.final.suc$M1CACC - df.final.all$M1CACC,
+    M3.C.ACC = df.final.suc$M3CACC - df.final.all$M3CACC)
+  #colwise(summary)(df.diff)
+
+  df.final.all.M1F1FSPEC <- df.final.all$M1F1FSPEC
+  df.final.all.M1F1FSPEC[df.final.all.M1F1FSPEC == 0] <- 0.0000001
+  df.ratio <- data.frame(
+    M1F1.F.SPEC = df.final.suc$M1F1FSPEC/df.final.all.M1F1FSPEC,
+    M1PH.F.SPEC = df.final.suc$M1PHFSPEC/df.final.all$M1PHFSPEC,
+    M3F1.F.SPEC = df.final.suc$M3F1FSPEC/df.final.all$M3F1FSPEC,
+    M3PH.F.SPEC = df.final.suc$M3PHFSPEC/df.final.all$M3PHFSPEC,
+    M1F1.F.SENS = df.final.suc$M1F1FSENS/df.final.all$M1F1FSENS,
+    M1PH.F.SENS = df.final.suc$M1PHFSENS/df.final.all$M1PHFSENS,
+    M3F1.F.SENS = df.final.suc$M3F1FSENS/df.final.all$M3F1FSENS,
+    M3PH.F.SENS = df.final.suc$M3PHFSENS/df.final.all$M3PHFSENS,
+    M1F1.F.ACC = df.final.suc$M1F1FACC/df.final.all$M1F1FACC,
+    M1PH.F.ACC = df.final.suc$M1PHFACC/df.final.all$M1PHFACC,
+    M3F1.F.ACC = df.final.suc$M3F1FACC/df.final.all$M3F1FACC,
+    M3PH.F.ACC = df.final.suc$M3PHFACC/df.final.all$M3PHFACC,
+    M1.C.SPEC = df.final.suc$M1CSPEC/df.final.all$M1CSPEC,
+    M3.C.SPEC = df.final.suc$M3CSPEC/df.final.all$M3CSPEC,
+    M1.C.SENS = df.final.suc$M1CSENS/df.final.all$M1CSENS,
+    M3.C.SENS = df.final.suc$M3CSENS/df.final.all$M3CSENS,
+    M1.C.ACC = df.final.suc$M1CACC/df.final.all$M1CACC,
+    M3.C.ACC = df.final.suc$M3CACC/df.final.all$M3CACC)
+  #colwise(summary)(df.ratio)
+  df.diff.l <- melt(df.diff)
+  df.diff.l <- data.frame(colsplit(df.diff.l$variable, pattern = "\\.",
+    names = c("method", "bioq", "stat")), value = df.diff.l$value)
+  df.ratio.l <- melt(df.ratio)
+  df.ratio.l <- data.frame(colsplit(df.ratio.l$variable, pattern = "\\.",
+    names = c("method", "bioq", "stat")), value = df.ratio.l$value)
+
+  df.diff.l$statf <- factor(df.diff.l$stat)
+  levels(df.diff.l$statf) <- c("Accuracy", "Sensitivity", "Specificity")
+  df.ratio.l$statf <- factor(df.ratio.l$stat)
+  levels(df.ratio.l$statf) <- c("Accuracy", "Sensitivity", "Specificity")
+
+  theme_set(theme_bw())
+
+  titletext1 <- expression(atop("Change in Error Matrix Values",
+    atop("Difference between using only successfully minimised runs and using all runs to determine bioequivalence")))
+  plotobj1 <- NULL
+  plotobj1 <- ggplot(data = df.diff.l[df.diff.l$bioq == "F", ])
+  plotobj1 <- plotobj1 + ggtitle(titletext1)
+  plotobj1 <- plotobj1 + geom_boxplot(aes(factor(method), value))
+  plotobj1 <- plotobj1 + scale_x_discrete("\nMethod")
+  plotobj1 <- plotobj1 + scale_y_continuous("Change in Percentage\n")
+  plotobj1 <- plotobj1 + facet_wrap(~statf)
+  plotobj1
+  ggsave("DiffPlot_F1.png", width=20, height=16, units=c("cm"))
+
+#  plotobj2 <- NULL
+#  plotobj2 <- ggplot(data = df.diff.l[df.diff.l$bioq == "C", ])
+#  plotobj2 <- plotobj2 + ggtitle(titletext1)
+#  plotobj2 <- plotobj2 + geom_boxplot(aes(factor(method), value))
+#  plotobj2 <- plotobj2 + scale_x_discrete("\nMethod")
+#  plotobj2 <- plotobj2 + scale_y_continuous("Change in Percentage\n")
+#  plotobj2 <- plotobj2 + facet_wrap(~statf)
+#  plotobj2
+#  ggsave("DiffPlot_CM.png", width=20, height=16, units=c("cm"))
+
+  shk.all.l <- melt(shk.all, c("RUN","SCEN","SIM","METH"))
+
+  titletext3 <- expression(atop("Title",
+    atop("Subtitle")))
+  plotobj3 <- NULL
+  plotobj3 <- ggplot(data = shk.all.l)
+  plotobj3 <- plotobj3 + ggtitle(titletext3)
+  plotobj3 <- plotobj3 + geom_boxplot(aes(factor(RUN), value))
+  plotobj3 <- plotobj3 + scale_x_discrete("\nRun")
+  plotobj3 <- plotobj3 + scale_y_continuous("Shrinkage (%)\n")
+  plotobj3 <- plotobj3 + facet_wrap(~variable)
+  plotobj3
+  #ggsave("BoxPlot_SHK.png", width=20, height=16, units=c("cm"))

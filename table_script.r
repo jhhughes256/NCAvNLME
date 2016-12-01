@@ -22,17 +22,13 @@
   df.sub1 <- df.all[1:29]
   df.sub2 <- df.all[30:43]
 
-  shk.file.name <- "collated_shrinkage_data.csv"
+  shk.file.name <- "collatedterm_shrinkage_data.csv"
   shk.r16 <- read.csv(paste(dir.r16, shk.file.name, sep="/"))
   shk.r78 <- read.csv(paste(dir.r78, shk.file.name, sep="/"))
   shk.r910 <- read.csv(paste(dir.r910, shk.file.name, sep="/"))
   shk.r1114 <- read.csv(paste(dir.r1114, shk.file.name, sep="/"))
-  shk.r1114$ETA.7. <- NA
-  shk.r1114$ETA.8. <- NA
+  names(shk.r1114)[9:10] <- c("BOVV21", "BOVV22")
   shk.all <- rbind(shk.r16, shk.r78, shk.r910, shk.r1114)
-  shk.all$X1 <- NULL
-  names(shk.all) <- c("RUN", "SCEN", "SIM", "METH", "BSVCL", "BSVV2", "BSVKA",
-    "BSVF1", "BOVCL1", "BOVCL2", "BOVV21", "BOVV22")
 
   nsim <- 500
   nbioq <- df.all$IPREDBE*nsim/100
@@ -104,6 +100,13 @@
 
   df.final.all <- df.final[df.final$TERMSTAT == "All", ]
   df.final.suc <- df.final[df.final$TERMSTAT == "Only Success", ]
+
+  write.csv(df.final.suc,"results_successonly.csv",row.names=F)
+  write.csv(df.final.suc,"results_all.csv",row.names=F)
+
+# PLOT SET 1
+  #Determine median, upper lower bounds of the difference between using
+  #all runs and only using successfully minimised runs
 
   df.diff <- data.frame(
     M1F1.F.SPEC = df.final.suc$M1F1FSPEC - df.final.all$M1F1FSPEC,
@@ -184,16 +187,149 @@
 #  plotobj2
 #  ggsave("DiffPlot_CM.png", width=20, height=16, units=c("cm"))
 
-  shk.all.l <- melt(shk.all, c("RUN","SCEN","SIM","METH"))
+# PLOT SET 2
+  #Identify patterns that show change in shrinkages relating to Type 1 error
+  #Do this by finding median, upper and lower bounds of shrinkages
 
-  titletext3 <- expression(atop("Title",
-    atop("Subtitle")))
+  shk.all$Scen <- shk.all$SCEN
+  shk.all$Scen[shk.all$RUN %% 2 == 0] <- shk.all$SCEN[shk.all$RUN %% 2 == 0] + 9
+  shk.all$Run <- ceiling(shk.all$RUN/2)
+  shk.all.l <- melt(shk.all[shk.all$Term == "Success", ], c("RUN","SCEN","Run","Scen","Sim","Method","Term"))
+  shk.all.l$RunVar <- paste("Run",shk.all.l$Run,shk.all.l$variable)
+
+  titletext3 <- expression(atop("Box Plot for Shrinkages on each ETA",
+    atop("Shrinkages grouped by Simulation Run")))
   plotobj3 <- NULL
   plotobj3 <- ggplot(data = shk.all.l)
   plotobj3 <- plotobj3 + ggtitle(titletext3)
-  plotobj3 <- plotobj3 + geom_boxplot(aes(factor(RUN), value))
+  plotobj3 <- plotobj3 + geom_boxplot(aes(factor(Run), value))
   plotobj3 <- plotobj3 + scale_x_discrete("\nRun")
-  plotobj3 <- plotobj3 + scale_y_continuous("Shrinkage (%)\n")
+  plotobj3 <- plotobj3 + scale_y_continuous("Shrinkage (%)\n", lim = c(0, 100))
   plotobj3 <- plotobj3 + facet_wrap(~variable)
   plotobj3
-  #ggsave("BoxPlot_SHK.png", width=20, height=16, units=c("cm"))
+  ggsave("SHKplot_byRun.png", width=20, height=16, units=c("cm"))
+
+  titletext4 <- expression(atop("Box Plot for Shrinkages on each ETA",
+    atop("Shrinkages grouped by Scenario")))
+  plotobj4 <- NULL
+  plotobj4 <- ggplot(data = shk.all.l)
+  plotobj4 <- plotobj4 + ggtitle(titletext4)
+  plotobj4 <- plotobj4 + geom_boxplot(aes(factor(Scen), value))
+  plotobj4 <- plotobj4 + scale_x_discrete("\nScenario")
+  plotobj4 <- plotobj4 + scale_y_continuous("Shrinkage (%)\n", lim = c(0, 100))
+  plotobj4 <- plotobj4 + facet_wrap(~variable)
+  plotobj4
+  ggsave("SHKplot_byScen.png", width=20, height=16, units=c("cm"))
+
+  titletext5 <- expression(atop("Box Plot for Shrinkages on each ETA",
+    atop("Shrinkages grouped by Run and Scenario")))
+  plotobj5 <- NULL
+  plotobj5 <- ggplot(data = shk.all.l)
+  plotobj5 <- plotobj5 + ggtitle(titletext5)
+  plotobj5 <- plotobj5 + geom_boxplot(aes(factor(Scen), value), outlier.size = 0.5)
+  plotobj5 <- plotobj5 + scale_x_discrete("\nScenario")
+  plotobj5 <- plotobj5 + scale_y_continuous("Shrinkage (%)\n", lim = c(0, 100))
+  plotobj5 <- plotobj5 + facet_wrap(~RunVar)
+  #plotobj5
+  ggsave("SHKplot_byScen_facetRun.png", width=30, height=24, units=c("cm"))
+
+  titletext6 <- expression(atop("Box Plot for Shrinkages on each ETA",
+    atop("Shrinkages grouped by Run and Scenario")))
+  plotobj6 <- NULL
+  plotobj6 <- ggplot(data = shk.all.l[shk.all.l$RunVar == "", ])
+  plotobj6 <- plotobj6 + ggtitle(titletext6)
+  plotobj6 <- plotobj6 + geom_boxplot(aes(factor(Scen), value), outlier.size = 0.5)
+  plotobj6 <- plotobj6 + scale_x_discrete("\nScenario")
+  plotobj6 <- plotobj6 + scale_y_continuous("Shrinkage (%)\n", lim = c(0, 100))
+  #plotobj6 <- plotobj6 + facet_wrap(~RunVar)
+  #plotobj6
+  ggsave("SHKplot_byScen_facetRun.png", width=30, height=24, units=c("cm"))
+
+# PLOT SET 3
+  #Identify patterns that show change in shrinkages relating to Type 1 error
+  #Do this by plotting median shrinkages against type 1 error percentage
+
+  shk.median <- dcast(
+    ddply(na.omit(shk.all.l), .(Run, Scen, Method, variable),
+      function(x) summary(x$value)["Median"]),
+    Run+Scen+Method ~ variable
+  )
+  shk.median.d <- arrange(rbind(shk.median, shk.median), Run, Scen, Method)
+  shk.median.d$Meth <- c("M1F1","M1PH","M3F1","M3PH")
+
+  df.suc.sub <- df.final.suc[c(1:2, 15:18)]
+  names(df.suc.sub)[3:6] <- c("M1F1","M1PH","M3F1","M3PH")
+  df.suc.l <- arrange(melt(df.suc.sub, c("RUN", "SCEN")), RUN, SCEN, variable)
+
+  shk.t1.df <- data.frame(
+    shk.median.d[-3],
+    T1 = df.suc.l$value
+  )
+  shk.t1.df.l <- melt(shk.t1.df, c("Run", "Scen", "Meth", "T1"))
+
+  shk.t1.r2 <- ddply(shk.t1.df.l, .(Meth, variable), function(x) summary(lm(x$T1 ~ x$value))$r.squared)
+
+  titletext7 <- expression(atop("Percent ETA Shrinkage versus Type 1 Error",
+    atop("Using M1 and the \"F estimate\" method ")))
+  plotobj7 <- NULL
+  plotobj7 <- ggplot(data = shk.t1.df.l[shk.t1.df.l$Meth == "M1F1", ])
+  plotobj7 <- plotobj7 + ggtitle(titletext7)
+  plotobj7 <- plotobj7 + geom_point(aes(x = value, y = T1))
+  plotobj7 <- plotobj7 + scale_x_continuous("Shrinkage (%)")
+  plotobj7 <- plotobj7 + scale_y_continuous("Type 1 Error (%)")
+  plotobj7 <- plotobj7 + facet_wrap(~ variable, nrow = 2, ncol = 4)
+  plotobj7
+
+  titletext8 <- expression(atop("Percent ETA Shrinkage versus Type 1 Error",
+    atop("Using M1 and the \"Post-Hoc\" method ")))
+  plotobj8 <- NULL
+  plotobj8 <- ggplot(data = shk.t1.df.l[shk.t1.df.l$Meth == "M1PH", ])
+  plotobj8 <- plotobj8 + ggtitle(titletext8)
+  plotobj8 <- plotobj8 + geom_point(aes(x = value, y = T1))
+  plotobj8 <- plotobj8 + scale_x_continuous("Shrinkage (%)")
+  plotobj8 <- plotobj8 + scale_y_continuous("Type 1 Error (%)")
+  plotobj8 <- plotobj8 + facet_wrap(~ variable, nrow = 2, ncol = 4)
+  plotobj8
+
+  titletext9 <- expression(atop("Percent ETA Shrinkage versus Type 1 Error",
+    atop("Using M3 and the \"F estimate\" method ")))
+  plotobj9 <- NULL
+  plotobj9 <- ggplot(data = shk.t1.df.l[shk.t1.df.l$Meth == "M3F1", ])
+  plotobj9 <- plotobj9 + ggtitle(titletext9)
+  plotobj9 <- plotobj9 + geom_point(aes(x = value, y = T1))
+  plotobj9 <- plotobj9 + scale_x_continuous("Shrinkage (%)")
+  plotobj9 <- plotobj9 + scale_y_continuous("Type 1 Error (%)")
+  plotobj9 <- plotobj9 + facet_wrap(~ variable, nrow = 2, ncol = 4)
+  plotobj9
+
+  titletext0 <- expression(atop("Percent ETA Shrinkage versus Type 1 Error",
+    atop("Using M3 and the \"Post-Hoc\" method ")))
+  plotobj0 <- NULL
+  plotobj0 <- ggplot(data = shk.t1.df.l[shk.t1.df.l$Meth == "M3PH", ])
+  plotobj0 <- plotobj0 + ggtitle(titletext0)
+  plotobj0 <- plotobj0 + geom_point(aes(x = value, y = T1))
+  plotobj0 <- plotobj0 + scale_x_continuous("Shrinkage (%)")
+  plotobj0 <- plotobj0 + scale_y_continuous("Type 1 Error (%)")
+  plotobj0 <- plotobj0 + facet_wrap(~ variable, nrow = 2, ncol = 4)
+  plotobj0
+
+  shk.grid.df <- shk.t1.df.l[shk.t1.df.l$variable %in% c("BSVCL", "BSVV2", "BSVKA", "BSVF1"), ]
+  shk.grid.df$MethVar <- factor(paste(shk.grid.df$Meth, shk.grid.df$variable),
+    levels = c(
+      "M1F1 BSVCL", "M1F1 BSVV2", "M1PH BSVCL", "M1PH BSVV2",
+      "M1F1 BSVKA", "M1F1 BSVF1", "M1PH BSVKA", "M1PH BSVF1",
+      "M3F1 BSVCL", "M3F1 BSVV2", "M3PH BSVCL", "M3PH BSVV2",
+      "M3F1 BSVKA", "M3F1 BSVF1", "M3PH BSVKA", "M3PH BSVF1")
+    )
+
+  titletext10 <- expression(atop("Percent BSV ETA Shrinkage versus Type 1 Error",
+    atop("Split into different methods of determining bioequivalence")))
+  plotobj10 <- NULL
+  plotobj10 <- ggplot(data = shk.grid.df)
+  plotobj10 <- plotobj10 + ggtitle(titletext10)
+  plotobj10 <- plotobj10 + geom_point(aes(x = value, y = T1), size = 0.5)
+  plotobj10 <- plotobj10 + scale_x_continuous("Shrinkage (%)")
+  plotobj10 <- plotobj10 + scale_y_continuous("Type 1 Error (%)")
+  plotobj10 <- plotobj10 + facet_wrap(~ MethVar, nrow = 4, ncol = 4)
+  plotobj10
+  ggsave("SHKT1plot_grid.png", width=20, height=16, units=c("cm"))

@@ -150,19 +150,19 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 	  v3 <- subdf$V3[(1:nid)*nobs*2]
     ka <- subdf$KA[(1:nid)*nobs*2]
 
-	  if(mode==1) {
+	  if(mode==1) { #if IPRED
 	    frel <- subdf$F1[(1:nid)*nobs*2]
       tempresult <- data.frame(uid_unq,uid,i,cl,q,v2,v3,ka,inncmax,gencmax,inntmax,gentmax,frel,cratio)
 	  }
-    if(mode==2) {
+    if(mode==2) { #if NCA
 	# Calculate AUC(0-inf)
-      innauc <- as.numeric(apply(aucinndf, 2, linlogAUCfunc, time.na=sstime, loq=blq))
-      genauc <- as.numeric(apply(aucgendf, 2, linlogAUCfunc, time.na=sstime, loq=blq))
+      innauc <- as.numeric(apply(aucinndf, 2, linlogAUCfunc, time.na=sstime))
+      genauc <- as.numeric(apply(aucgendf, 2, linlogAUCfunc, time.na=sstime))
 	    frel <- ifelse(innauc!=0, genauc/innauc, 0)
 
 	    tempresult <- data.frame(uid_unq,uid,i,cl,q,v2,v3,ka,inncmax,gencmax,inntmax,gentmax,innauc,genauc,frel,cratio)
 	  }
-	  if(mode>=3) {
+	  if(mode>=3) { #if M1 or M3
 	    cl1 <- subdf$CL[(1:nid)*nobs*2-nobs]
 	    q1 <- subdf$Q[(1:nid)*nobs*2-nobs]
 	    v2.1 <- subdf$V2[(1:nid)*nobs*2-nobs]
@@ -197,21 +197,19 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 #--------------------------------------------------------------------------------------------
 # NON-COMPARTMENTAL FUNCTIONS
 # AUC Function with Linear Up/Logarithmic Down Trapezoidal Method
-  linlogAUCfunc <- function(dv.na,time.na,loq) {
-  # Find AUC using trapezoidal method
+  linlogAUCfunc <- function(dv.na,time.na) {
+  # Find AUC0t using trapezoidal method
   # Define values to be chosen for AUC calculation and give base value for AUC0t
 	  n1 <- 1
 	  n2 <- 2
-	  n3 <- 3
-	  n4 <- 4
 	  AUC0t <- 0
-	  dvtimedf <- na.omit(data.frame(dv.na,time.na))
+	  dvtimedf <- na.omit(data.frame(dv.na, time.na))
 	  dv <- c(unlist(dvtimedf[1]))
 	  time <- c(unlist(dvtimedf[2]))
 	  numobs <- length(time)
 
     #start loop to find AUC0t
-	  while(n1<numobs) {
+	  while(n1 < numobs) {
 	  # Define variables to be used in trapezoidal method
 	    c1 <- dv[n1]
 		  c2 <- dv[n2]
@@ -231,16 +229,15 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
       # Define next values to be chosen for AUC calculation and LOQ searching
 		  n1 <- n1+1
 		  n2 <- n2+1
-		  n3 <- n3+1
-		  n4 <- n4+1
 	  } #end AUC0t
 
-	# Define R2 to allow comparison, truncate time and dv to remove BLQ values
+  # Find AUCtinf using automated process of finding best terminal phase rate constant
+	# Define base values for best k & R2, truncate time & dv to remove unwanted values
     ntail <- 3
     bestR2 <- 0
     bestk <- 0
 	  whichtime <- which(dv==max(dv)) #designate point of cmax
-	  adjdv <- dv[(whichtime-1):numobs] #delete all values before cmax as these are not needed for terminal phase, -1 to allow inclusion of Cmax in regression if required (as this is what WinNonLin does oddly)
+	  adjdv <- dv[(whichtime-1):numobs] #delete all values before cmax as these are not needed for terminal phase, -1 to allow inclusion of Cmax in regression if required
 	  flag <- 0
 
   	# While number of values being used to determine the slope is less than the number of total values* do the following
@@ -355,8 +352,7 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
   }
 
   # Determine bioequivalence
-  bioq.func <- function(outputdf,limitlo,limithi,ctl.name)
-  {
+  bioq.func <- function(outputdf,limitlo,limithi,ctl.name) {
     outputdf$PF_FREL <- ifelse(outputdf$FREL_GLO95 < limitlo | outputdf$FREL_GHI95 > limithi,1,0)
     probtable <- ddply(outputdf, .(SIM_ID), function(df) CalcProb(df$PF_FREL))
     probtable <- data.frame("Metric"="FREL","Data"=ctl.name, probtable)
@@ -550,11 +546,6 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
 	  sim.tdf <- mdply(tdf,simulate.2comp.abs)
 	  result <- data.frame("UID"=uid,"SIM"=sim,"FORM"=form,sim.tdf,"AUC"=auc)
   }
- #####################################################
- #####################################################
-                  # 2016 Additions #
- #####################################################
- #####################################################
 
   runaov2 <- function(df.in, USE) {
   #debug

@@ -34,7 +34,7 @@
 #   The tool will create further directories within this directory for each
 #   scenario to be tested. It will also save the final table containing
 #   collated results into master directory (master.dir).
-  master.dir <- "E:/hscpw-df1/Data1/Jim Hughes/DDPLY"
+  master.dir <- "E:/hscpw-df1/Data1/Jim Hughes/DDPLY/TEST"
   setwd(master.dir)
 
 #   If you have changed the names of the tool files alter them here
@@ -52,7 +52,6 @@
   library(plyr) # used for repeating functions
   library(MASS) # used for covariance matrix
   library(MBESS) # used for covariance matrix
-  set.seed(1234)
 
 # Specify run characteristics
   #set up values that are variable between runs
@@ -76,11 +75,11 @@
 #  Set up values that are constant between runs
   runvec <- c(
     NID = 24,  #number of patients per study
-    NSIM = 20,  #number of simulations
+    NSIM = 5,  #number of simulations
     LIMITLO = 0.8,  #lower limit for bioequivalence
     LIMITHI = 1.25,  #upper limit for bioequivlence
     NCORE.M1 = 5,  #number of simultaneous instances of NONMEM running M1
-    NCORE.M3 = 20,  #number of simultaneous instances of NONMEM running M3
+    NCORE.M3 = 5,  #number of simultaneous instances of NONMEM running M3
     AMT = 125,  #dose of drug
     # Population parameters (THETA)
     CL.POP = 20,  #clearance
@@ -124,7 +123,7 @@
     1, 0.3, 0.3, 0.3,
     0.3, 1, 0.3, 0.3,
     0.3, 0.3, 1, 0.3,
-    0.3, 0.3 ,0.3 , 1)
+    0.3, 0.3, 0.3 ,1)
 
 ### END OF INPUTS FOR ALTERATION ----------------------------------------------
 
@@ -135,9 +134,8 @@
   # 3. Non-Compartmental Analysis
   # 4. Initial analysis of NCA data
   # 5. Non-Linear Mixed Effects
-  # 6. Create .r script for loading
 
-  ddply(rundf[10:45, ], .(RUN, SCEN), function(df, vec, time, cor, limtime) {
+  ddply(rundf, .(RUN, SCEN), function(df, vec, time, cor, limtime) {
 ### Object names within ddply function
 #     rundf -> df     (index using dollar sign df$index)
 #     runvec -> vec   (index using square brackets ["index"])
@@ -146,7 +144,14 @@
 #     sstimelist -> timelist (index using dollar sign)
 
 ### 1. Simulation of data
-  #Set working directory and file names
+  # Set the seed (very important!)
+  #   Ensures that the same set of patients are used between scenarios
+  #   Simply change the seed to observe a different set of patients
+  #   For any given scenario:
+  #     Total unique patients = number of sims * number of subjects per study
+    set.seed(1234)
+
+  # Set working directory and file names
     SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
     SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
     SIM.file <- paste(SIM.dir,SIM.name.out,sep="/")
@@ -396,8 +401,8 @@
 
 ### SECOND HALF ----------------------------------------------------------------
 
-  bioqtable <- ddply(rundf[10:45, ], .(RUN, SCEN), function(df, vec, time, limtime) {
-  #Set working directory
+  bioqtable <- ddply(rundf, .(RUN, SCEN), function(df, vec, time, limtime) {
+  # Set working directory
     SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
     SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
     SIM.file <- paste(SIM.dir,SIM.name.out,sep="/")
@@ -446,47 +451,53 @@
 
     trunc.file <- paste(SIM.name.out,"TRUNCATED.csv",sep="_")
     limdata <- read.csv(paste(SIM.dir,trunc.file,sep="/"))
-    limobs <- length(sstime)
-    per.bloq <- percent.blq(limdata$DV,limdata$TIME,trunc.blq)
+    limobs <- length(sstime)  #number of observations for truncated sampling times
+    per.bloq <- percent.blq(limdata$DV,limdata$TIME,trunc.blq)  #percent BLOQ
 
-  # Setup mbt .bat file (is run manually)
+  # Setup mbt .bat file
     setwd(EST.dir)
     cd.EST.dir <- paste("cd", EST.dir)
     mbtcall <- c(paste("call", wfn.dir), "E:", cd.EST.dir, "call nmmbt")
     mbtbat <- "nmmbtrun.bat"
     mbtbat.dir <- paste(EST.dir, mbtbat, sep="/")
-    writeLines(mbtcall, mbtbat.dir)
-    system(mbtbat, show.output.on.console=F)
+    writeLines(mbtcall, mbtbat.dir)  #save .bat file
+    system(mbtbat, show.output.on.console=F)  #run .bat file
     setwd(master.dir)
 
-   # Process fit files into results table (see functions utility)
+  # Process fit files into results table
     m1nlme.fitout <- nlme.fit(SIM.name.out,FIT.dir,EST.dir,"M1",nsim,nid,limobs)
-    m1.nsim <- m1nlme.fitout[1]
+    m1.nsim <- m1nlme.fitout[1]  #number of completed runs
     m1.nsub <- m1.nsim*nid
-    m1.fitfail <- m1nlme.fitout[-1]
+    m1.fitfail <- m1nlme.fitout[-1]  #list of failed runs (not terminated)
     m1sim.in <- read.csv(paste(SIM.file,"M1_NMTHETAS.csv", sep="_"))
     m1sim.time <- nlme.simtime(m1sim.in)
+    #Simulation using estimated parameters from models
     m1sim.out <- nlme.sim(m1sim.in,m1sim.time,nid,m1.nsim)
     data.process(m1sim.out,m1sim.time,nid,m1.nsim,SIM.file,trunc.blq,mode=3)
+    #Load processed simulation output
     m1result <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M1result.csv"))
     m1fresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M1Fresult.csv"))
     m1cresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M1Cresult.csv"))
     m1phfresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M1PHFresult.csv"))
 
     m3nlme.fitout <- nlme.fit(SIM.name.out,FIT.dir,EST.dir,"M3",nsim,nid,limobs)
-    m3.nsim <- m3nlme.fitout[1]
+    m3.nsim <- m3nlme.fitout[1]  #number of completed runs
     m3.nsub <- m3.nsim*nid
-    m3.fitfail <- m3nlme.fitout[-1]
+    m3.fitfail <- m3nlme.fitout[-1]  #list of failed runs (not terminated)
     m3sim.in <- read.csv(paste(SIM.file, "M3_NMTHETAS.csv", sep="_"))
     m3sim.time <- nlme.simtime(m3sim.in)
+    #Simulation using estimated parameters from models
     m3sim.out <- nlme.sim(m3sim.in,m3sim.time,nid,m3.nsim)
     data.process(m3sim.out,m3sim.time,nid,m3.nsim,SIM.file,trunc.blq,mode=4)
+    #Load processed simulation output
     m3result <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M3result.csv"))
     m3fresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M3Fresult.csv"))
     m3cresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M3Cresult.csv"))
     m3phfresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M3PHFresult.csv"))
 
   # Find percentage of successful runs
+  #   Done by loading up nmmbt run made previously in the script.
+  #   Scrape output to determine which models minimised successfully
     mbt <- read.table(file=paste(EST.dir,"nmmbt.nm7.txt",sep="/"),header=TRUE)
     mbt <- orderBy(~Run,mbt)
     mbt$Method <- rep(1:2,each=nsim)
@@ -494,9 +505,11 @@
     mbt$Success <- gsub("SUCCESSFUL",1,mbt$Min)
     mbt$Success <- gsub("TERMINATED",0,mbt$Min)
     mbt <- orderBy(~Method+ModelNum,mbt)
+    #list of terminated runs
     m1.term <- which(mbt$Success == 0 & mbt$Method == 1)
     m3.term <- which(mbt$Success == 0 & mbt$Method == 2) - nsim
 
+    #determine number of successfully minimised runs + covariance steps
     m1mbt <- mbt[mbt$Method == 1, c(1,5,6)] #m1
     m1mbt$Min <- gsub("SUCCESSFUL",1,m1mbt$Min)
     m1mbt$Min <- gsub("TERMINATED",0,m1mbt$Min)
@@ -516,9 +529,8 @@
     m3min <- mean(as.numeric(m3mbt$Min))*100
     m3cov <- mean(as.numeric(m3mbt$Cov))*100
 
-  ### Determine for bioequvalence
-  # FREL
-    #should do all this in ddply, doing the same things for each dataset
+  # Determine for bioequvalence
+  #   Create a data.frame ready for use with ddply
     aovprep <- data.frame(matrix(NA, nrow=nsub*4+m1.nsub*4+m3.nsub*4, ncol=8))
     colnames(aovprep) <- c("METH","ID","SIM","FORM","AUC","CMAX","IDf","FORMf")
     aovprep$METH <- as.factor(c(
@@ -566,38 +578,15 @@
     aovprep$IDf <- as.factor(aovprep$ID)
     aovprep$FORMf <- as.factor(aovprep$FORM)
 
+  # Use ANOVA to determine bioequivalent studies
     faov <- ddply(aovprep, .(METH, SIM), function(df) runaov2(df, USE = "AUC"))
     caov <- ddply(aovprep, .(METH, SIM), function(df) runaov2(df, USE = "CMAX"))
-    meth.faov <- faov[faov$METH != "IPRED", ]
-    meth.faov$IPRED.BE <- c(
-      rep(faov$BE[faov$METH == "IPRED" & !faov$SIM %in% m1.fitfail], 2),
-      rep(faov$BE[faov$METH == "IPRED" & !faov$SIM %in% m3.fitfail], 2),
-      faov$BE[faov$METH == "IPRED"])
-    meth.caov <- caov[caov$METH != "IPRED", ]
-    meth.caov$IPRED.BE <- c(
-      rep(caov$BE[caov$METH == "IPRED" & !caov$SIM %in% m1.fitfail], 2),
-      rep(caov$BE[caov$METH == "IPRED" & !caov$SIM %in% m3.fitfail], 2),
-      caov$BE[caov$METH == "IPRED"])
 
+  # Calculate proportion of bioequivalent studies
     fbioq <- ddply(faov, .(METH), function(df) mean(df$BE))
     cbioq <- ddply(caov, .(METH), function(df) mean(df$BE))
 
-    ferror <- ddply(meth.faov, .(METH), function(df)
-      errortype.func2(df$IPRED.BE, df$BE))
-
-    ferror.t1 <- ddply(ferror, .(METH), function(df)
-      mean(as.numeric(as.vector(df$pT1))))
-    ferror.t2 <- ddply(ferror, .(METH), function(df)
-      mean(as.numeric(as.vector(df$pT2))))
-
-    cerror <- ddply(meth.caov, .(METH), function(df)
-      errortype.func2(df$IPRED.BE, df$BE))
-
-    cerror.t1 <- ddply(cerror, .(METH), function(df)
-      mean(as.numeric(as.vector(df$pT1))))
-    cerror.t2 <- ddply(cerror, .(METH), function(df)
-      mean(as.numeric(as.vector(df$pT2))))
-
+  # Remove simulations with termination status not successful
     faov.termstat <- faov[!(
       faov$METH == "M1F1" & faov$SIM %in% m1.term |
       faov$METH == "M1PH" & faov$SIM %in% m1.term |
@@ -608,8 +597,9 @@
       caov$METH == "M3F1" & caov$SIM %in% m3.term |
       caov$METH == "M1PH" | caov$METH == "M3PH"), ]
 
-    meth.faov.termstat <- faov.termstat[faov.termstat$METH != "IPRED", ]
-    meth.faov.termstat$IPRED.BE <- c(
+  # Separate methods from true bioequivalent studies (IPRED)
+    meth.faov <- faov.termstat[faov.termstat$METH != "IPRED", ]
+    meth.faov$IPRED.BE <- c(
       rep(
         faov.termstat$BE[faov.termstat$METH == "IPRED" &
         !faov.termstat$SIM %in% m1.term &
@@ -620,8 +610,8 @@
         !faov.termstat$SIM %in% m3.fitfail], 2),
       faov.termstat$BE[faov.termstat$METH == "IPRED"])
 
-    meth.caov.termstat <- caov.termstat[caov.termstat$METH != "IPRED", ]
-    meth.caov.termstat$IPRED.BE <- c(
+    meth.caov <- caov.termstat[caov.termstat$METH != "IPRED", ]
+    meth.caov$IPRED.BE <- c(
       caov.termstat$BE[caov.termstat$METH == "IPRED" &
         !caov.termstat$SIM %in% m1.term &
         !caov.termstat$SIM %in% m1.fitfail],
@@ -630,57 +620,57 @@
         !caov.termstat$SIM %in% m3.fitfail],
       caov.termstat$BE[caov.termstat$METH == "IPRED"])
 
-    fbioq.termstat <- ddply(faov.termstat, .(METH),
-      function(df) mean(df$BE))
-    cbioq.termstat <- ddply(caov.termstat, .(METH),
-      function(df) mean(df$BE))
+  # Determine percentage of bioequivalent studies
+    fbioq <- ddply(faov.termstat, .(METH), function(df) mean(df$BE))
+    cbioq <- ddply(caov.termstat, .(METH), function(df) mean(df$BE))
 
-    ferror.termstat <- ddply(meth.faov.termstat, .(METH),
+  # Determine which studies have made a Type I or Type II error
+    ferror <- ddply(meth.faov, .(METH),
+      function(df) errortype.func2(df$IPRED.BE, df$BE))
+    cerror <- ddply(meth.caov, .(METH),
       function(df) errortype.func2(df$IPRED.BE, df$BE))
 
-    ferror.termstat.t1 <- ddply(ferror.termstat, .(METH),
+  # Determine percentage of studies with Type I or Type II error
+    ferror.t1 <- ddply(ferror, .(METH),
       function(df) mean(as.numeric(as.vector(df$pT1))))
-    ferror.termstat.t2 <- ddply(ferror.termstat, .(METH),
+    ferror.t2 <- ddply(ferror, .(METH),
+      function(df) mean(as.numeric(as.vector(df$pT2))))
+    cerror.t1 <- ddply(cerror, .(METH),
+      function(df) mean(as.numeric(as.vector(df$pT1))))
+    cerror.t2 <- ddply(cerror, .(METH),
       function(df) mean(as.numeric(as.vector(df$pT2))))
 
-    cerror.termstat <- ddply(meth.caov.termstat, .(METH),
-      function(df) errortype.func2(df$IPRED.BE, df$BE))
-
-    cerror.termstat.t1 <- ddply(cerror.termstat, .(METH),
-      function(df) mean(as.numeric(as.vector(df$pT1))))
-    cerror.termstat.t2 <- ddply(cerror.termstat, .(METH),
-      function(df) mean(as.numeric(as.vector(df$pT2))))
-
+  # Print to console that processing is complete
     print(paste(SIM.name.out,"processed"))
 
+  # Collate data table for output
     aovbioqtable <- data.frame(
-      TERMSTAT = c("All","Only Success"),
-      IPREDBE = c(fbioq$V1[1]*100,fbioq.termstat$V1[1]*100),
-      NCABE = c(fbioq$V1[6]*100,fbioq.termstat$V1[6]*100),
-      M1F1BE = c(fbioq$V1[2]*100,fbioq.termstat$V1[2]*100),
-      M1PHBE = c(fbioq$V1[3]*100,fbioq.termstat$V1[3]*100),
-      M3F1BE = c(fbioq$V1[4]*100,fbioq.termstat$V1[4]*100),
-      M3PHBE = c(fbioq$V1[5]*100,fbioq.termstat$V1[5]*100),
-      IPREDCM = c(cbioq$V1[1]*100,cbioq.termstat$V1[1]*100),
-      NCACM = c(cbioq$V1[6]*100,cbioq.termstat$V1[4]*100),
-      M1CM = c(cbioq$V1[2]*100,cbioq.termstat$V1[2]*100),
-      M3CM = c(cbioq$V1[4]*100,cbioq.termstat$V1[3]*100),
-      NCAFT1 = c(ferror.t1$V1[5]*100,ferror.termstat.t1$V1[5]*100),
-      M1F1FT1 = c(ferror.t1$V1[1]*100,ferror.termstat.t1$V1[1]*100),
-      M1PHFT1 = c(ferror.t1$V1[2]*100,ferror.termstat.t1$V1[2]*100),
-      M3F1FT1 = c(ferror.t1$V1[3]*100,ferror.termstat.t1$V1[3]*100),
-      M3PHFT1 = c(ferror.t1$V1[4]*100,ferror.termstat.t1$V1[4]*100),
-      NCAFT2 = c(ferror.t2$V1[5]*100,ferror.termstat.t2$V1[5]*100),
-      M1F1FT2 = c(ferror.t2$V1[1]*100,ferror.termstat.t2$V1[1]*100),
-      M1PHFT2 = c(ferror.t2$V1[2]*100,ferror.termstat.t2$V1[2]*100),
-      M3F1FT2 = c(ferror.t2$V1[3]*100,ferror.termstat.t2$V1[3]*100),
-      M3PHFT2 = c(ferror.t2$V1[4]*100,ferror.termstat.t2$V1[4]*100),
-      NCACT1 = c(cerror.t1$V1[5]*100,cerror.termstat.t1$V1[3]*100),
-      M1CT1 = c(cerror.t1$V1[1]*100,cerror.termstat.t1$V1[1]*100),
-      M3CT1 = c(cerror.t1$V1[3]*100,cerror.termstat.t1$V1[2]*100),
-      NCACT2 = c(cerror.t2$V1[5]*100,cerror.termstat.t2$V1[3]*100),
-      M1CT2 = c(cerror.t2$V1[1]*100,cerror.termstat.t2$V1[1]*100),
-      M3CT2 = c(cerror.t2$V1[3]*100,cerror.termstat.t2$V1[2]*100),
+      IPREDBE = fbioq$V1[1]*100,
+      NCABE = fbioq$V1[6]*100,
+      M1F1BE = fbioq$V1[2]*100,
+      M1PHBE = fbioq$V1[3]*100,
+      M3F1BE = fbioq$V1[4]*100,
+      M3PHBE = fbioq$V1[5]*100,
+      IPREDCM = cbioq$V1[1]*100,
+      NCACM = cbioq$V1[6]*100,
+      M1CM = cbioq$V1[2]*100,
+      M3CM = cbioq$V1[4]*100,
+      NCAFT1 = ferror.t1$V1[5]*100,
+      M1F1FT1 = ferror.t1$V1[1]*100,
+      M1PHFT1 = ferror.t1$V1[2]*100,
+      M3F1FT1 = ferror.t1$V1[3]*100,
+      M3PHFT1 = ferror.t1$V1[4]*100,
+      NCAFT2 = ferror.t2$V1[5]*100,
+      M1F1FT2 = ferror.t2$V1[1]*100,
+      M1PHFT2 = ferror.t2$V1[2]*100,
+      M3F1FT2 = ferror.t2$V1[3]*100,
+      M3PHFT2 = ferror.t2$V1[4]*100,
+      NCACT1 = cerror.t1$V1[5]*100,
+      M1CT1 = cerror.t1$V1[1]*100,
+      M3CT1 = cerror.t1$V1[3]*100,
+      NCACT2 = cerror.t2$V1[5]*100,
+      M1CT2 = cerror.t2$V1[1]*100,
+      M3CT2 = cerror.t2$V1[3]*100,
       PERBLOQ = per.bloq,
       TRUNCBLQ = trunc.blq,
       RUVPROP = ruv.prop,

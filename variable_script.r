@@ -6,7 +6,7 @@
 
 
 # Source functions file and NONMEM .ctl reference txt
-  master.dir <- "E:/hscpw-df1/Data1/Jim Hughes/DDPLY/PARAM_VARY"      ### Directory containing source files
+  master.dir <- "E:/hscpw-df1/Data1/Jim Hughes/DDPLY/PARAM_VARY2"      ### Directory containing source files
   setwd(master.dir)
   source("functions_NCAvNLME_2016.r")
   ctlm1 <- readLines("NONMEM_ref_M1.ctl")  #No BSV or BOV on Q & V3
@@ -41,7 +41,7 @@
   #set up values that are constant between runs
   runvec <- c(
     NID = 24,
-    NSIM = 500,
+    NSIM = 20,
     LIMITLO = 0.8,
     LIMITHI = 1.25,
     NCORE.M1 = 5,
@@ -97,7 +97,7 @@
   # 5. Non-Linear Mixed Effects
   # 6. Create .r script for loading
 
-  ddply(rundf[2, ], .(RUN, SCEN), function(df, vec, time, cor, vary) {
+  ddply(rundf, .(RUN, SCEN), function(df, vec, time, cor, vary) {
 ### 1. Simulation of data
   #Set working directory and file names
     SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
@@ -321,11 +321,14 @@
         system(cmd, input=nmbat2, invisible=F, show.output.on.console=F, wait=F)
         wait.file <- paste0(SIM.name.out,"3_model",nsim)
         start.time <- Sys.time()
+        iter <- 0
     # Wait for final batch file to produce .fit file
         while(!file.exists(paste0(
-          EST.dir,"/",wait.file,".nm7/",tolower(wait.file),".fit"))) {
+          EST.dir,"/",wait.file,".nm7/",tolower(wait.file),".fit")) |
+          iter > 60) {
             Sys.sleep(60)
             print(Sys.time() - start.time)
+            iter <- iter + 1
         }
   	  }
     }
@@ -335,7 +338,7 @@
 
 ### SECOND HALF ----------------------------------------------------------------
 
-  bioqtable <- ddply(rundf[2, ], .(RUN, SCEN), function(df, vec, time) {
+  bioqtable <- ddply(rundf, .(RUN, SCEN), function(df, vec, time) {
   #Set working directory
     SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
     SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
@@ -677,7 +680,7 @@
 
     nm.dir <- "nm7"
     search.term <- paste("*",nm.dir, sep="")
-    shrink.data <- ddply(rundf[2,], .(RUN, SCEN), function(df) {
+    shrink.data <- ddply(rundf, .(RUN, SCEN), function(df) {
     #Set working directory
       SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
       SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
@@ -698,7 +701,7 @@
     shrink.data <- arrange(read.csv(shk.filename), RUN, SCEN, Method, Sim)
     shrink.data$X1 <- NULL
 
-    shrink.sum <- ddply(rundf[2,], .(RUN, SCEN), function(df, vec, time, shk) {
+    shrink.sum <- ddply(rundf, .(RUN, SCEN), function(df, vec, time, shk) {
     #Set working directory
       SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
       SIM.dir <- paste(master.dir,SIM.name.out,sep="/")

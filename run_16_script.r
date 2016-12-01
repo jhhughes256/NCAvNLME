@@ -514,7 +514,7 @@
 
       #insert alternate ending here
     }, vec = runvec, time = timevec, shk = shrink.data)
-    shrink.sum <- arrange(shrink.sum, RUN, SCEN, Method, variable)
+    shrink.sum <- arrange(shrink.sum, RUN, SCEN, Method, Sim)
     shk.filename <- paste(master.dir, "collatedterm_shrinkage_data.csv", sep = "/")
     write.csv(shrink.sum,
       file = shk.filename,

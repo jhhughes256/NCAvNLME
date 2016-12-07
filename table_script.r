@@ -2,6 +2,8 @@
   rm(list=ls(all=TRUE))
   graphics.off()
 
+  source("functions_NCAvNLME_2016.r")
+
   library(plyr)
   library(ggplot2)
   library(reshape2)
@@ -165,7 +167,7 @@
 
   theme_set(theme_bw())
 
-  titletext1 <- expression(atop("Change in Error Matrix Values",
+  titletext1 <- expression(atop("Change in Results (Accuracy, Sensitivity, Specificity)",
     atop("Difference between using only successfully minimised runs and using all runs to determine bioequivalence")))
   plotobj1 <- NULL
   plotobj1 <- ggplot(data = df.diff.l[df.diff.l$bioq == "F", ])
@@ -176,6 +178,26 @@
   plotobj1 <- plotobj1 + facet_wrap(~statf)
   plotobj1
   ggsave("DiffPlot_F1.png", width=20, height=16, units=c("cm"))
+
+  CI90lo <- function(x) quantile(x,probs = 0.05)
+	CI90hi <- function(x) quantile(x,probs = 0.95)
+  df.diff.stat <- ddply(df.diff.l, .(method, bioq, statf), function(x) {
+    c(CI90lo(x$value), mean(x$value), CI90hi(x$value))
+  })
+  names(df.diff.stat)[4:6] <- c("ci90lo", "mean", "ci90hi")
+
+  titletext1 <- expression(atop("Change in Results (Accuracy, Sensitivity, Specificity)",
+    atop("Confidence intervals of difference between use of successfully minimised runs and all runs to determine bioequivalence")))
+  plotobj1a <- NULL
+  plotobj1a <- ggplot(data = df.diff.stat[df.diff.stat$bioq == "F", ], aes(factor(method), mean))
+  plotobj1a <- plotobj1a + ggtitle(titletext1)
+  plotobj1a <- plotobj1a + geom_point()
+  plotobj1a <- plotobj1a + geom_errorbar(aes(ymin = ci90lo, ymax = ci90hi), width = 0.5)
+  plotobj1a <- plotobj1a + scale_x_discrete("\nMethod")
+  plotobj1a <- plotobj1a + scale_y_continuous("Change in Percentage\n", lim = c(-8, 8))
+  plotobj1a <- plotobj1a + facet_wrap(~statf)
+  plotobj1a
+  ggsave("CIDiffPlot_F1_lim.png", width=20, height=8, units=c("cm"))
 
 #  plotobj2 <- NULL
 #  plotobj2 <- ggplot(data = df.diff.l[df.diff.l$bioq == "C", ])

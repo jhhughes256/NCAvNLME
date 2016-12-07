@@ -541,6 +541,111 @@
       row.names = F)
       #removing everything between
 
+      collate.ERR <- function(dir.name, work.dir) {
+        nm.dir <- "nm7"
+        lst.file.name <- gsub(nm.dir, "lst", dir.name)
+        lst.file.path <- paste(work.dir, dir.name, lst.file.name, sep = "/")
+
+        #Scrape data from the *.lst file
+        if (file.exists(lst.file.path) == T) {  #screen for missing file
+          lst.lines <- readLines(lst.file.path)
+          first.line <- grep("#TERM:", lst.lines)
+          last.line <- grep(" NO. OF SIG. DIGITS", lst.lines)
+
+          if (length(last.line) == 0 | length(first.line) == 0) {
+            info <- c("Function has not detected", "a termination status in the",
+            ".lst file. Please check", "models.lst file manually.", dir.name)
+            browser("Unknown error, type info for more information, type Q to quit.")
+          } else {
+            error.lines <- lst.lines[first.line:last.line[1]]
+          }
+          err.code <- "None"
+          desc.code <- "None"
+
+          #Determine termination status and error status
+          if (length(grep("TERMINATED", error.lines[2])) != 0) {
+            term.code <- "Unsuccessful"
+            if (length(grep("ROUNDING", error.lines)) != 0) {
+              err.code <- "Rounding errors"
+              if (length(grep("0PARAMETER ESTIMATE IS NEAR", lst.lines[last.line[1] + 1])) != 0) {
+                desc.code <- "Parameter estimate near boundary"
+              }
+            } else if (length(grep("ZERO GRADIENT", error.lines)) != 0) {
+              err.code <- "Zero gradient"
+            } else if (length(grep("OBJ. FUNC. IS INFINITE", error.lines)) != 0) {
+              err.code <- "Obj close to infinity"
+              if (length(grep("LAST ITERATION", error.lines)) != 0) {
+                desc.code <- "Due to last iteration"
+              } else if (length(grep("NEXT ITERATION", error.lines)) != 0) {
+                desc.code <- "Due to next iteration"
+              } else {
+                desc.code <- error.lines[3]
+              }
+            } else if (length(grep("MAX. NO. OF FUNCTION", error.lines)) != 0) {
+              err.code <- "Reached max evaluations"
+              if (length(grep("0PARAMETER ESTIMATE IS NEAR", lst.lines[last.line[1] + 1])) != 0) {
+                desc.code <- "Parameter estimate near boundary"
+              }
+            } else {
+              err.code <- error.lines[3]
+            }
+          } else if (length(grep("SUCCESSFUL", error.lines[2])) != 0) {
+            term.code <- "Successful"
+            if (length(grep("HOWEVER, PROBLEMS", error.lines[3])) != 0) {
+              desc.code <- "Problems occurred during minimisation"
+            }
+            if (length(grep("0PARAMETER ESTIMATE IS NEAR", lst.lines[last.line[1] + 1])) != 0) {
+              desc.code <- "Parameter estimate near boundary"
+            }
+            if (length(grep("0R MATRIX", lst.lines)) != 0) {
+              desc.code <- "R matrix algorithmically singular"
+            }
+            if (length(grep("0S MATRIX", lst.lines)) != 0) {
+              desc.code <- "S matrix unobtainable"
+            }
+            if (length(grep("0PRED EXIT CODE = 1", lst.lines)) != 0) {
+              desc.code <- "Problems with individual"
+            }
+          } else {
+            term.code <- error.lines[2]
+          }
+
+          #Determine covariance step status
+          cov.line <- grep("STANDARD ERROR OF ESTIMATE", lst.lines)
+          if (length(cov.line) > 0) {
+            cov.code <- "Passed"
+          } else if (length(cov.line) == 0) {
+            cov.code <- "Failed"
+          }
+        }
+        data.frame(
+          Model = dir.name,
+          TermStat = term.code,
+          CovCode = cov.code,
+          ErrCode = err.code,
+          TermDesc = desc.code)
+      }
+
+      nm.dir <- "nm7"
+      search.term <- paste("*",nm.dir, sep="")
+      error.data <- ddply(rundf, .(RUN, SCEN), function(df) {
+      #Set working directory
+        SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
+        SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
+        SIM.file <- paste(SIM.dir,SIM.name.out,sep="/")
+        EST.dir <- paste(SIM.dir,"ctl",sep="/")
+        EST.file <- paste(EST.dir,SIM.name.out,sep="/")
+        FIT.dir <- paste(SIM.dir,"fit",sep="/")
+        dir.names <- dir(path=EST.dir,pattern=glob2rx(search.term))
+        err.out <- mdply(dir.names, collate.ERR, work.dir = EST.dir)
+        print(paste(SIM.name.out,"processed"))
+        err.out
+      })
+      err.filename <- paste(master.dir, "collated_error_data.csv", sep = "/")
+      write.csv(error.data,
+        file = err.filename,
+        row.names = F)
+
 # Alternate ending
 #      ddply(comb.shk, .(Term, Method), function(x) {
 #        y <- data.frame(

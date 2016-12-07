@@ -375,15 +375,14 @@
     row.names = F)
 
     collate.SHK <- function(dir.name, work.dir) {
-      result1 <- NA
       nm.dir <- "nm7"
-      shk.file.name <- gsub(nm.dir,"shk",dir.name)
-      shk.file.path <- paste(work.dir,dir.name,shk.file.name, sep="/")
-      #Scrape data from the *.smr file
-      if (file.exists(shk.file.path)==T) {  #to screen for missing file
-        shk.data <- read.table(shk.file.path, skip=1, header=T)           #read all the lines of the shk file
-    	  shk.data <- subset(shk.data, SUBPOP==1) #Only take SUBPOP 1 for mixture models
-        shrink.vals <- subset(shk.data, TYPE==4)
+      shk.file.name <- gsub(nm.dir, "shk", dir.name)
+      shk.file.path <- paste(work.dir, dir.name, shk.file.name, sep="/")
+      #Scrape data from the *.shk file
+      if (file.exists(shk.file.path) == T) {  #screen for missing file
+        shk.data <- read.table(shk.file.path, skip = 1, header = T)  #read all the lines of the shk file
+    	  shk.data <- subset(shk.data, SUBPOP == 1)  #Only take SUBPOP 1
+        shrink.vals <- subset(shk.data, TYPE == 4)
       } else {
         shrink.vals <- rep(0, 10)
       }
@@ -521,6 +520,215 @@
       row.names = F)
       #removing everything between
 
+  collate.ERR <- function(dir.name, work.dir) {
+    nm.dir <- "nm7"
+    lst.file.name <- gsub(nm.dir, "lst", dir.name)
+    lst.file.path <- paste(work.dir, dir.name, lst.file.name, sep = "/")
+
+    #Scrape data from the *.lst file
+    if (file.exists(lst.file.path) == T) {  #screen for missing file
+      lst.lines <- readLines(lst.file.path)
+      first.line <- grep("#TERM:", lst.lines)
+      last.line <- grep(" NO. OF SIG. DIGITS", lst.lines)
+
+      if (length(last.line) == 0 | length(first.line) == 0) {
+        info <- c("Function has not detected", "a termination status in the",
+        ".lst file. Please check", "models.lst file manually.", dir.name)
+        browser("Unknown error, type info for more information, type Q to quit.")
+      } else {
+        error.lines <- lst.lines[first.line:last.line[1]]
+      }
+      err.code <- "None"
+      desc.code <- "None"
+
+      #Determine termination status and error status
+      if (length(grep("TERMINATED", error.lines[2])) != 0) {
+        term.code <- "Unsuccessful"
+        if (length(grep("ROUNDING", error.lines)) != 0) {
+          err.code <- "Rounding errors"
+          if (length(grep("0PARAMETER ESTIMATE IS NEAR", lst.lines[last.line[1] + 1])) != 0) {
+            desc.code <- "Parameter estimate near boundary"
+          } else {
+            desc.code <- "Rounding errors"
+          }
+        } else if (length(grep("ZERO GRADIENT", error.lines)) != 0) {
+          err.code <- "Zero gradient"
+          desc.code <- "Zero gradient"
+        } else if (length(grep("OBJ. FUNC. IS INFINITE", error.lines)) != 0) {
+          err.code <- "Obj close to infinity"
+          if (length(grep("LAST ITERATION", error.lines)) != 0) {
+            desc.code <- "Due to last iteration"
+          } else if (length(grep("NEXT ITERATION", error.lines)) != 0) {
+            desc.code <- "Due to next iteration"
+          } else {
+            desc.code <- error.lines[3]
+          }
+        } else if (length(grep("MAX. NO. OF FUNCTION", error.lines)) != 0) {
+          err.code <- "Reached max evaluations"
+          if (length(grep("0PARAMETER ESTIMATE IS NEAR", lst.lines[last.line[1] + 1])) != 0) {
+            desc.code <- "Parameter estimate near boundary"
+          }
+        } else {
+          err.code <- error.lines[3]
+        }
+      } else if (length(grep("SUCCESSFUL", error.lines[2])) != 0) {
+        term.code <- "Successful"
+        if (length(grep("HOWEVER, PROBLEMS", error.lines[3])) != 0) {
+          desc.code <- "Problems occurred during minimisation"
+        }
+        if (length(grep("0PARAMETER ESTIMATE IS NEAR", lst.lines[last.line[1] + 1])) != 0) {
+          desc.code <- "COV Parameter estimate near boundary"
+        }
+        if (length(grep("0R MATRIX", lst.lines)) != 0) {
+          desc.code <- "R matrix algorithmically singular"
+        }
+        if (length(grep("0S MATRIX", lst.lines)) != 0) {
+          desc.code <- "S matrix unobtainable"
+        }
+        if (length(grep("0PRED EXIT CODE = 1", lst.lines)) != 0) {
+          desc.code <- "Problems with individual"
+        }
+      } else {
+        term.code <- error.lines[2]
+      }
+
+      #Determine covariance step status
+      cov.line <- grep("STANDARD ERROR OF ESTIMATE", lst.lines)
+      if (length(cov.line) > 0 & term.code == "Successful") {
+        cov.code <- "Passed"
+        if(desc.code != "None") desc.code <- paste("COVPASS",desc.code)
+      } else if (length(cov.line) == 0 | term.code == "Unsuccessful") {
+        cov.code <- "Failed"
+        if(desc.code != "None" & term.code == "Successful") desc.code <- paste("COVFAIL",desc.code)
+      }
+    }
+    data.frame(
+      Model = dir.name,
+      TermStat = term.code,
+      CovCode = cov.code,
+      ErrCode = err.code,
+      TermDesc = desc.code)
+  }
+
+  nm.dir <- "nm7"
+  search.term <- paste("*",nm.dir, sep="")
+  error.data <- ddply(rundf, .(RUN, SCEN), function(df) {
+  #Set working directory
+    SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
+    SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
+    SIM.file <- paste(SIM.dir,SIM.name.out,sep="/")
+    EST.dir <- paste(SIM.dir,"ctl",sep="/")
+    EST.file <- paste(EST.dir,SIM.name.out,sep="/")
+    FIT.dir <- paste(SIM.dir,"fit",sep="/")
+    dir.names <- dir(path=EST.dir,pattern=glob2rx(search.term))
+    err.out <- mdply(dir.names, collate.ERR, work.dir = EST.dir)
+    print(paste(SIM.name.out,"processed"))
+    err.out
+  })
+  err.filename <- paste(master.dir, "collated_error_data.csv", sep = "/")
+  write.csv(error.data,
+    file = err.filename,
+    row.names = F)
+
+  shrink.data <- arrange(read.csv(shk.filename), RUN, SCEN, Method, Sim)
+  shrink.data$X1 <- NULL
+
+  shrink.sum <- ddply(rundf, .(RUN, SCEN), function(df, vec, time, shk) {
+  #Set working directory
+    SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
+    SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
+    SIM.file <- paste(SIM.dir,SIM.name.out,sep="/")
+    EST.dir <- paste(SIM.dir,"ctl",sep="/")
+    EST.file <- paste(EST.dir,SIM.name.out,sep="/")
+    FIT.dir <- paste(SIM.dir,"fit",sep="/")
+
+    nid <- vec["NID"]
+    nsim <- vec["NSIM"]
+    nsub <- nid*nsim
+    nobs <- length(time)
+    if (df$SS.TYPE == 1) {
+      sstime <- c(0,0.25,0.5,1,2,4,6,8,12,16,24,36,48,72,96)
+    } else {
+      sstime <- c(0,0.25,0.5,1,2,4,8,16,36,96)
+    }
+
+    ruv.prop <- df$RUV.PROP
+    ruv.blq <- df$RUV.BLQ
+    blq <- df$BLQ
+    if (df$RUV.TYPE == 1) {
+      ruv.add <- (ruv.blq - ruv.prop) * blq
+      trunc.blq <- blq
+    }
+    if (df$RUV.TYPE == 2) {
+      ruv.add <- (0.2 - ruv.prop) * blq
+      trunc.blq <- ruv.add/(ruv.blq - ruv.prop)
+    }
+    ruv.add.nm <- ifelse(blq == 0 || ruv.add == 0,
+      paste(ruv.add, "FIX"),
+      ruv.add)
+
+    sub.shk <- shk[shk$RUN == df$RUN & shk$SCEN == df$SCEN, ]
+    l.shk <- dim(sub.shk)[2]
+    names(sub.shk)[5:l.shk] <- c(
+      "BSVCL", "BSVV2", "BSVKA", "BSVF1",
+      "BOVCL1", "BOVCL2", "BOVV21", "BOVV22")
+
+  #Load data for processing
+    #simdata <- read.csv(paste(SIM.file,"_RAW.csv", sep="")) #Only do this if you need it for troubleshooting, RAW.csv can be 500MB+
+    #ipredresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_IPREDresult.csv"))
+    #ncaresult <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_NCAresult.csv"))
+
+    trunc.file <- paste(SIM.name.out,"TRUNCATED.csv",sep="_")
+    limdata <- read.csv(paste(SIM.dir,trunc.file,sep="/"))
+    limobs <- length(sstime)
+    per.bloq <- percent.blq(limdata$DV,limdata$TIME,trunc.blq)
+
+   # Process fit files into results table (see functions utility)
+    m1nlme.fitout <- nlme.fit(SIM.name.out,FIT.dir,EST.dir,"M1",nsim,nid,limobs)
+    m1.nsim <- m1nlme.fitout[1]
+    m1.nsub <- m1.nsim*nid
+    m1.fitfail <- m1nlme.fitout[-1]
+    #m1sim.in <- read.csv(paste(SIM.file,"M1_NMTHETAS.csv", sep="_"))
+    #m1result <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M1result.csv"))
+
+    m3nlme.fitout <- nlme.fit(SIM.name.out,FIT.dir,EST.dir,"M3",nsim,nid,limobs)
+    m3.nsim <- m3nlme.fitout[1]
+    m3.nsub <- m3.nsim*nid
+    m3.fitfail <- m3nlme.fitout[-1]
+    #m3sim.in <- read.csv(paste(SIM.file,"M3_NMTHETAS.csv", sep="_"))
+    #m3result <- read.csv(paste0(SIM.dir,"/",SIM.name.out,"_M3result.csv"))
+
+  # Find percentage of successful runs
+    mbt <- read.table(file=paste(EST.dir,"nmmbt.nm7.txt",sep="/"),header=TRUE)
+    mbt <- orderBy(~Run,mbt)
+    mbt$Method <- rep(1:2,each=nsim)
+    mbt$ModelNum <- rep(order(as.character(1:nsim)), times = 2)
+    mbt$Success <- gsub("SUCCESSFUL",1,mbt$Min)
+    mbt$Success <- gsub("TERMINATED",0,mbt$Min)
+    mbt <- orderBy(~Method+ModelNum,mbt)
+    m1.term <- which(mbt$Success == 0 & mbt$Method == 1)
+    m3.term <- which(mbt$Success == 0 & mbt$Method == 2) - nsim
+
+    term.shk <- sub.shk[
+      sub.shk$Method == 1 &
+        !sub.shk$Sim %in% m1.fitfail &
+        !sub.shk$Sim %in% m1.term |
+      sub.shk$Method == 3 &
+        !sub.shk$Sim %in% m3.fitfail &
+        !sub.shk$Sim %in% m3.term, ]
+
+    sub.shk$Term <- "All"
+    term.shk$Term <- "Success"
+    comb.shk <- rbind(sub.shk, term.shk)
+
+    #insert alternate ending here
+  }, vec = runvec, time = timevec, shk = shrink.data)
+  shrink.sum <- arrange(shrink.sum, RUN, SCEN, Method, Sim)
+  shk.filename <- paste(master.dir, "collatedterm_shrinkage_data.csv", sep = "/")
+  write.csv(shrink.sum,
+    file = shk.filename,
+    row.names = F)
+    #removing everything between
 # Alternate ending
 #      ddply(comb.shk, .(Term, Method), function(x) {
 #        y <- data.frame(

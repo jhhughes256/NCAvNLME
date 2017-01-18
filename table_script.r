@@ -187,14 +187,15 @@
   names(df.diff.stat)[4:6] <- c("ci90lo", "mean", "ci90hi")
 
   titletext1 <- expression(atop("Change in Results (Accuracy, Sensitivity, Specificity)",
-    atop("Confidence intervals of difference between use of successfully minimised runs and all runs to determine bioequivalence")))
+    atop("CIs of difference between use of successfully minimised runs and all runs to determine bioequivalence")))
   plotobj1a <- NULL
   plotobj1a <- ggplot(data = df.diff.stat[df.diff.stat$bioq == "F", ], aes(factor(method), mean))
-  plotobj1a <- plotobj1a + ggtitle(titletext1)
+  #plotobj1a <- plotobj1a + ggtitle(titletext1)
   plotobj1a <- plotobj1a + geom_point()
   plotobj1a <- plotobj1a + geom_errorbar(aes(ymin = ci90lo, ymax = ci90hi), width = 0.5)
   plotobj1a <- plotobj1a + scale_x_discrete("\nMethod")
-  plotobj1a <- plotobj1a + scale_y_continuous("Change in Percentage\n", lim = c(-8, 8))
+  plotobj1a <- plotobj1a + scale_y_continuous("Change in Percentage\n",
+    labels = dollar_format(suffix = "%", prefix = ""), lim = c(-8, 8))
   plotobj1a <- plotobj1a + facet_wrap(~statf)
   plotobj1a
   ggsave("CIDiffPlot_F1_lim.png", width=20, height=8, units=c("cm"))

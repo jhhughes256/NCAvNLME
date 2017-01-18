@@ -364,6 +364,28 @@ data.process <- function(simdata,sstime,nid,nsim,SIM.file,blq,mode)  { # 1 <- IP
     probtable <- data.frame("Metric"="CRAT","Data"=ctl.name, probtable)
   }
 
+  # Determine Sensitivity, Specificity and Accuracy
+  error.matrix.fun <- function(error) {
+    #enter percent type I and type II error
+    #receive percent sensitivity, specificity and accuracy
+    nsim <- error$NSIM
+    nbioq <- error$NBIOQ
+    nnonb <- nsim - nbioq
+    T1 <- error$T1/100
+    T2 <- error$T2/100
+    #Determine contingency table values
+    FP <- T1*nsim
+    FN <- T2*nsim
+    TP <- nbioq - FN
+    TN <- nnonb - FP
+    #Determine statistical endpoints
+    ACC <- (TP+TN)/nsim*100
+    SENS <- TP/nbioq*100
+    SPEC <- TN/nnonb*100
+    data.frame(ACC, SENS, SPEC)
+  }
+
+
 ### Assess Bioequivalence
  # Assign Pass/Fail flag to Confidence Intervals
    # 0 is CI within limits, 1 is CI outside limits

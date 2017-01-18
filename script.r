@@ -1,4 +1,4 @@
-### --------------------------- NLMEvNCA BEAST ---------------------------- ###
+### ------------------------------ NLMEvNCA ------------------------------- ###
 #          (NLME vs. NCA Bioequivalence Analysis Stimulation Tool)            #
 
 # As used in:
@@ -34,7 +34,7 @@
 #   The tool will create further directories within this directory for each
 #   scenario to be tested. It will also save the final table containing
 #   collated results into master directory (master.dir).
-  master.dir <- "Directory"
+  master.dir <- "Please enter directory"
   setwd(master.dir)
 
 #   If you have changed the names of the tool files alter them here
@@ -49,6 +49,8 @@
 
 # Load libraries
   library(doBy) # used for ordering of data.frames
+  library(reshape2)
+  library(stringr)
   library(plyr) # used for repeating functions
   library(MASS) # used for covariance matrix
   library(MBESS) # used for covariance matrix
@@ -75,11 +77,11 @@
 #  Set up values that are constant between runs
   runvec <- c(
     NID = 24,  #number of patients per study
-    NSIM = 5,  #number of simulations
+    NSIM = 20,  #number of simulations
     LIMITLO = 0.8,  #lower limit for bioequivalence
     LIMITHI = 1.25,  #upper limit for bioequivlence
     NCORE.M1 = 5,  #number of simultaneous instances of NONMEM running M1
-    NCORE.M3 = 5,  #number of simultaneous instances of NONMEM running M3
+    NCORE.M3 = 20,  #number of simultaneous instances of NONMEM running M3
     AMT = 125,  #dose of drug
     # Population parameters (THETA)
     CL.POP = 20,  #clearance
@@ -389,7 +391,7 @@
         start.time <- Sys.time()
     # Wait for final batch file to produce .fit file
         while(!file.exists(paste0(
-          EST.dir,"/",wait.file,".nm7/",tolower(wait.file),".fit"))) {
+          EST.dir,"/",wait.file,".nm7/",tolower(wait.file),".smr"))) {
             Sys.sleep(60)
             print(Sys.time() - start.time)
         }
@@ -404,7 +406,8 @@
   bioqtable <- ddply(rundf, .(RUN, SCEN), function(df, vec, time, limtime) {
   # Set working directory
     SIM.name.out <- paste0("Run", df$RUN, "_Scen", df$SCEN)
-    SIM.dir <- paste(master.dir,SIM.name.out,sep="/")
+    SIM.dir <- paste(master.dir,SIM.name.out,sep="/")k
+
     SIM.file <- paste(SIM.dir,SIM.name.out,sep="/")
     EST.dir <- paste(SIM.dir,"ctl",sep="/")
     EST.file <- paste(EST.dir,SIM.name.out,sep="/")
@@ -503,7 +506,7 @@
     mbt$Method <- rep(1:2,each=nsim)
     mbt$ModelNum <- rep(order(as.character(1:nsim)), times = 2)
     mbt$Success <- gsub("SUCCESSFUL",1,mbt$Min)
-    mbt$Success <- gsub("TERMINATED",0,mbt$Min)
+    mbt$Success <- gsub("TERMINATED",0,mbt$Success)
     mbt <- orderBy(~Method+ModelNum,mbt)
     #list of terminated runs
     m1.term <- which(mbt$Success == 0 & mbt$Method == 1)
@@ -645,34 +648,62 @@
   # Print to console that processing is complete
     print(paste(SIM.name.out,"processed"))
 
+    if (m1.fitfail != 0) {
+      m1.term <- unique(c(m1.fitfail, m1.term))
+    }
+    if (m3.fitfail != 0) {
+      m3.term <- unique(c(m3.fitfail, m3.term))
+    }
+
+    m1.ifterm <- length(m3.term) >= nsim
+    m3.ifterm <- length(m3.term) >= nsim
+
   # Collate data table for output
     aovbioqtable <- data.frame(
-      IPRED.BE = fbioq$V1[1]*100,
-      NCA.BE = fbioq$V1[6]*100,
-      M1F1.BE = fbioq$V1[2]*100,
-      M1PH.BE = fbioq$V1[3]*100,
-      M3F1.BE = fbioq$V1[4]*100,
-      M3PH.BE = fbioq$V1[5]*100,
-      IPRED.CM = cbioq$V1[1]*100,
-      NCA.CM = cbioq$V1[6]*100,
-      M1.CM = cbioq$V1[2]*100,
-      M3.CM = cbioq$V1[4]*100,
-      NCAF.T1 = ferror.t1$V1[5]*100,
-      M1F1F.T1 = ferror.t1$V1[1]*100,
-      M1PHF.T1 = ferror.t1$V1[2]*100,
-      M3F1F.T1 = ferror.t1$V1[3]*100,
-      M3PHF.T1 = ferror.t1$V1[4]*100,
-      NCAF.T2 = ferror.t2$V1[5]*100,
-      M1F1F.T2 = ferror.t2$V1[1]*100,
-      M1PHF.T2 = ferror.t2$V1[2]*100,
-      M3F1F.T2 = ferror.t2$V1[3]*100,
-      M3PHF.T2 = ferror.t2$V1[4]*100,
-      NCAC.T1 = cerror.t1$V1[5]*100,
-      M1C.T1 = cerror.t1$V1[1]*100,
-      M3C.T1 = cerror.t1$V1[3]*100,
-      NCAC.T2 = cerror.t2$V1[5]*100,
-      M1C.T2 = cerror.t2$V1[1]*100,
-      M3C.T2 = cerror.t2$V1[3]*100,
+      IPRED.BE = fbioq$V1[fbioq$METH == "IPRED"]*100,
+      NCA.BE = fbioq$V1[fbioq$METH == "NCA"]*100,
+      M1F1.BE = ifelse(!m1.ifterm,
+        fbioq$V1[fbioq$METH == "M1F1"]*100,0),
+      M1PH.BE = ifelse(!m1.ifterm,
+        fbioq$V1[fbioq$METH == "M1PH"]*100,0),
+      M3F1.BE = ifelse(!m3.ifterm,
+        fbioq$V1[fbioq$METH == "M3F1"]*100,0),
+      M3PH.BE = ifelse(!m3.ifterm,
+        fbioq$V1[fbioq$METH == "M3PH"]*100,0),
+      IPRED.CM = cbioq$V1[cbioq$METH == "IPRED"]*100,
+      NCA.CM = cbioq$V1[cbioq$METH == "NCA"]*100,
+      M1.CM = ifelse(!m1.ifterm,
+        cbioq$V1[cbioq$METH == "M1F1"]*100,0),
+      M3.CM = ifelse(!m3.ifterm,
+        cbioq$V1[cbioq$METH == "M3F1"]*100,0),
+      NCAF.T1 = ferror.t1$V1[ferror.t1$METH == "NCA"]*100,
+      M1F1F.T1 = ifelse(!m1.ifterm,
+        ferror.t1$V1[ferror.t1$METH == "M1F1"]*100,0),
+      M1PHF.T1 = ifelse(!m1.ifterm,
+        ferror.t1$V1[ferror.t1$METH == "M1PH"]*100,0),
+      M3F1F.T1 = ifelse(!m3.ifterm,
+        ferror.t1$V1[ferror.t1$METH == "M3F1"]*100,0),
+      M3PHF.T1 = ifelse(!m3.ifterm,
+        ferror.t1$V1[ferror.t1$METH == "M3PH"]*100,0),
+      NCAF.T2 = ferror.t2$V1[ferror.t2$METH == "NCA"]*100,
+      M1F1F.T2 = ifelse(!m1.ifterm,
+        ferror.t2$V1[ferror.t2$METH == "M1F1"]*100,0),
+      M1PHF.T2 = ifelse(!m1.ifterm,
+        ferror.t2$V1[ferror.t2$METH == "M1PH"]*100,0),
+      M3F1F.T2 = ifelse(!m3.ifterm,
+        ferror.t2$V1[ferror.t2$METH == "M3F1"]*100,0),
+      M3PHF.T2 = ifelse(!m3.ifterm,
+        ferror.t2$V1[ferror.t2$METH == "M3PH"]*100,0),
+      NCAC.T1 = cerror.t1$V1[cerror.t1$METH == "NCA"]*100,
+      M1C.T1 = ifelse(!m1.ifterm,
+        cerror.t1$V1[cerror.t1$METH == "M1F1"]*100,0),
+      M3C.T1 = ifelse(!m3.ifterm,
+        cerror.t1$V1[cerror.t1$METH == "M3F1"]*100,0),
+      NCAC.T2 = cerror.t2$V1[cerror.t2$METH == "NCA"]*100,
+      M1C.T2 = ifelse(!m1.ifterm,
+        cerror.t2$V1[cerror.t2$METH == "M1F1"]*100,0),
+      M3C.T2 = ifelse(!m3.ifterm,
+        cerror.t2$V1[cerror.t2$METH == "M3F1"]*100,0),
       PERBLOQ = per.bloq,
       TRUNCBLQ = trunc.blq,
       RUVPROP = ruv.prop,
@@ -683,31 +714,24 @@
       M1COV = m1cov,
       M3COV = m3cov,
       M1NSIM = m1.nsim,
-      M1TERM = length(m1.term),
-      M1IPREDBE = ipred.fbioq$V1[1]*100),
-      M1IPREDCM = ipred.cbioq$V1[1]*100),
+      M1SUCC = nsim - length(m1.term),
+      M1IPREDBE = ifelse(!m1.ifterm,
+        ipred.fbioq$V1[ipred.fbioq$METH == "M1F1"]*100,0),
+      M1IPREDCM = ifelse(!m1.ifterm,
+        ipred.cbioq$V1[ipred.cbioq$METH == "M1F1"]*100,0),
       M3NSIM = m3.nsim,
-      M3TERM = length(m3.term),
-      M3IPREDBE = ipred.fbioq$V1[3]*100,
-      M3IPREDCM = ipred.cbioq$V1[3]*100)
+      M3SUCC = nsim - length(m3.term),
+      M3IPREDBE = ifelse(!m3.ifterm,
+        ipred.fbioq$V1[ipred.fbioq$METH == "M3F1"]*100,0),
+      M3IPREDCM = ifelse(!m3.ifterm,
+        ipred.cbioq$V1[ipred.cbioq$METH == "M3F1"]*100,0))
     aovbioqtable
   }, vec = runvec, time = timevec, limtime = sstimelist)
   write.csv(bioqtable,
     file = paste(master.dir, "collated_bioq_table.csv", sep = "/"),
     row.names = F)
-  bioqtable$NSIM <- 500
-  bioqtable <- bioqtable[bioqtable$TERMSTAT == "Only Success",]
-  error.df <- bioqtable[c(1:2,14:29)]
 
-  names(error.df) <- c(
-    "RUN", "SCEN",
-    "NCAF.T1", "M1F1F.T1", "M1PHF.T1", "M3F1F.T1", "M3PHF.T1",
-    "NCAF.T2", "M1F1F.T2", "M1PHF.T2", "M3F1F.T2", "M3PHF.T2",
-    "NCAC.T1", "M1C.T1", "M3C.T1",
-    "NCAC.T2", "M1C.T2", "M3C.T2")
-  error.df$SCEN[error.df$RUN %% 2 == 0] <- error.df$SCEN[error.df$RUN %% 2 == 0] + 9
-  error.df$RUN <- ceiling(error.df$RUN/2)
-
+  error.df <- bioqtable[c(1:2,13:28)]
   error.df.l <- melt(error.df, c("RUN", "SCEN"))
   error.df.w <- dcast(data.frame(
     RUN = error.df.l$RUN,
@@ -717,29 +741,33 @@
 
   ferror.df <- error.df.w[str_detect(error.df.w$Method, "F"), ]
   ferror.df$NSIM <- as.vector(rbind(
-    bioqtable$M1NSIM, bioqtable$M1NSIM,
-    bioqtable$M3NSIM, bioqtable$M3NSIM,
+    bioqtable$M1SUCC, bioqtable$M1SUCC,
+    bioqtable$M3SUCC, bioqtable$M3SUCC,
     bioqtable$NSIM
   ))
   f.ipredbe <- as.vector(rbind(
     bioqtable$M1IPREDBE, bioqtable$M1IPREDBE,
     bioqtable$M3IPREDBE, bioqtable$M3IPREDBE,
-    bioqtable$IPREDBE
+    bioqtable$IPRED.BE
   ))
-  ferror.df$NBIOQ <- f.ipredbe*ferror.df$NSIM/100
+  ferror.df$NBIOQ <- f.ipredbe/100*c(
+    rep(bioqtable$M1SUCC, each = 2), rep(bioqtable$M3SUCC, each = 2), bioqtable$NSIM
+  )
 
   cerror.df <- error.df.w[!str_detect(error.df.w$Method, "F"), ]
   cerror.df$NSIM <- as.vector(rbind(
-    bioqtable$M1NSIM,
-    bioqtable$M3NSIM,
+    bioqtable$M1SUCC,
+    bioqtable$M3SUCC,
     bioqtable$NSIM
   ))
   c.ipredbe <- as.vector(rbind(
     bioqtable$M1IPREDCM,
     bioqtable$M3IPREDCM,
-    bioqtable$IPREDCM
+    bioqtable$IPRED.CM
   ))
-  cerror.df$NBIOQ <- c.ipredbe*cerror.df$NSIM/100
+  cerror.df$NBIOQ <- c.ipredbe/100*c(
+    bioqtable$M1SUCC, bioqtable$M3SUCC, bioqtable$NSIM
+  )
 
   ferror.final.l <- melt(
     ddply(ferror.df, .(RUN, SCEN, Method), function (x) error.matrix.fun(x)),
